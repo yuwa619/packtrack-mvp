@@ -2,7 +2,7 @@
 
 - Release: `packtrack-rc1`
 - Date: `2026-03-05`
-- Commit: `TBD_AFTER_COMMIT`
+- Commit: `0348053` (RC1 payload snapshot)
 
 ## Included Verification Fixes
 - Alembic migration runtime import-path fix in `api/alembic/env.py`.
