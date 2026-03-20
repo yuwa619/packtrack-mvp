@@ -1,0 +1,12 @@
+{
+  "timestamp_utc": "20260305T122903Z",
+  "project_id": 1,
+  "project_title": "PackTrack Pilot Labels",
+  "input_samples": 24,
+  "imported_into_project": 24,
+  "tasks_in_project": 0,
+  "labelled_before": 0,
+  "labelled_now": 0,
+  "labelled_total": 10,
+  "checkpoint_dir": "/Users/Yuwa/Library/Mobile Documents/com~apple~CloudDocs/Startups /PackTrack MVP/docs/labelstudio/checkpoints/sprint-001-20260305T122903Z"
+}

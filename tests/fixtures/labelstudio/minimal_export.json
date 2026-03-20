@@ -1,0 +1,98 @@
+[
+  {
+    "id": 1,
+    "data": {
+      "text": "Supplier Name: Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2026-03-05\n"
+    },
+    "meta": {},
+    "annotations": [
+      {
+        "id": 11,
+        "result": [
+          {
+            "id": "r1",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 0,
+              "end": 8,
+              "text": "INV-1001",
+              "labels": ["INVOICE_REF"]
+            }
+          },
+          {
+            "id": "r2",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 15,
+              "end": 33,
+              "text": "Acme Packaging Ltd",
+              "labels": ["SUPPLIER_NAME"]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 2,
+    "data": {
+      "text": "Weight 1500 g\nPackaging format: bottle\nMaterial hint: PET\n"
+    },
+    "meta": {},
+    "annotations": [
+      {
+        "id": 12,
+        "result": [
+          {
+            "id": "r3",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 999,
+              "end": 1005,
+              "text": "1500",
+              "labels": ["WEIGHT_VALUE"]
+            }
+          },
+          {
+            "id": "r4",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 12,
+              "end": 13,
+              "text": "g",
+              "labels": ["WEIGHT_UNIT"]
+            }
+          },
+          {
+            "id": "r5",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 55,
+              "end": 58,
+              "text": "PET",
+              "labels": ["MATERIAL_HINT"]
+            }
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": 3,
+    "data": {
+      "text": "No labels here"
+    },
+    "meta": {},
+    "annotations": []
+  }
+]

@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+from datetime import timedelta
 from io import BytesIO
 from pathlib import Path
+from urllib.parse import urlparse
 
 from minio import Minio
 
@@ -11,11 +13,23 @@ from ..config import settings
 class ObjectStorage:
     def __init__(self) -> None:
         self._local_root = Path(settings.minio_fallback_dir)
+        internal_endpoint, internal_secure = self._parse_endpoint(
+            settings.resolved_minio_internal_endpoint
+        )
+        public_endpoint, public_secure = self._parse_endpoint(settings.minio_public_endpoint)
         self._client = Minio(
-            settings.minio_endpoint,
+            internal_endpoint,
             access_key=settings.minio_access_key,
             secret_key=settings.minio_secret_key,
-            secure=settings.minio_secure,
+            secure=internal_secure,
+            region=settings.minio_region,
+        )
+        self._presign_client = Minio(
+            public_endpoint,
+            access_key=settings.minio_access_key,
+            secret_key=settings.minio_secret_key,
+            secure=public_secure,
+            region=settings.minio_region,
         )
 
     @staticmethod
@@ -37,10 +51,10 @@ class ObjectStorage:
 
         try:
             self._ensure_bucket_remote(bucket)
-            return self._client.presigned_put_object(
+            return self._presign_client.presigned_put_object(
                 bucket_name=bucket,
                 object_name=key,
-                expires=expires_seconds,
+                expires=timedelta(seconds=expires_seconds),
             )
         except Exception:
             if not settings.minio_allow_local_fallback:
@@ -100,3 +114,16 @@ class ObjectStorage:
     def _get_bytes_local(self, bucket: str, key: str) -> bytes:
         path = self._local_root / bucket / key
         return path.read_bytes()
+
+    @staticmethod
+    def _parse_endpoint(value: str) -> tuple[str, bool]:
+        if "://" in value:
+            parsed = urlparse(value)
+            if parsed.hostname is None:
+                raise ValueError(f"Invalid MinIO endpoint: {value}")
+            endpoint = parsed.hostname
+            if parsed.port is not None:
+                endpoint = f"{endpoint}:{parsed.port}"
+            return endpoint, parsed.scheme.lower() == "https"
+
+        return value, settings.minio_secure

@@ -1,16 +1,22 @@
 import { CSSProperties, FormEvent, useEffect, useMemo, useState } from "react";
+import {
+  apiRequest,
+  buildHeaders,
+  extractErrorMessage,
+  fetchImageBlob,
+  isRecord,
+  resolveApiPath,
+} from "./api";
+import type { AuthContext } from "./api";
+import { JobsScreen } from "./screens/JobsScreen";
+import { ReportsScreen } from "./screens/ReportsScreen";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8000/api/v1";
-const API_ORIGIN = API_BASE.replace(/\/api\/v1\/?$/, "");
 const DEFAULT_USER_ID = import.meta.env.VITE_DEMO_USER_ID ?? "demo-user";
 const DEFAULT_TENANT_ID = import.meta.env.VITE_DEMO_TENANT_ID ?? "123456";
 
 type AppScreen = "upload" | "jobs" | "review" | "review-detail" | "reports";
-
-type AuthContext = {
-  userId: string;
-  tenantId: string;
-};
+type ReviewQueueMode = "current" | "all";
+type UploadMode = "multiple" | "zip";
 
 type JobRow = {
   job_id: string;
@@ -56,6 +62,61 @@ type ClassificationCandidate = {
   reason: string | null;
 };
 
+type ReviewMaterial = {
+  material_id: string;
+  material_key: string | null;
+  taxonomy_category: string | null;
+  taxonomy_code: string | null;
+  material: string;
+  subtype: string | null;
+  weight_value: number | null;
+  weight_unit: string | null;
+  confidence: number | null;
+  source: string | null;
+  created_at: string | null;
+};
+
+type MaterialOption = {
+  key: string;
+  materialKey: string;
+  label: string;
+  material: string;
+  subtype: string | null;
+  taxonomyCategory: string;
+  taxonomyCode: string;
+};
+
+type MaterialEditState = {
+  selected: boolean;
+  weightValue: string;
+  weightUnit: string;
+};
+
+/**
+ * Fallback material options used while the backend endpoint is loading or
+ * unreachable.  The canonical source is GET /review/material-options.
+ */
+const FALLBACK_MATERIAL_OPTIONS: MaterialOption[] = [
+  { key: "plastic-rigid", materialKey: "Plastic Rigid", label: "Plastic Rigid", material: "Plastic", subtype: "Rigid", taxonomyCategory: "Material", taxonomyCode: "Plastic" },
+  { key: "plastic-flexible", materialKey: "Plastic Flexible", label: "Plastic Flexible", material: "Plastic", subtype: "Flexible", taxonomyCategory: "Material", taxonomyCode: "Plastic" },
+  { key: "paper-cardboard", materialKey: "Paper/Cardboard", label: "Paper/Cardboard", material: "Paper or cardboard", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Paper or cardboard" },
+  { key: "aluminium", materialKey: "Aluminium", label: "Aluminium", material: "Aluminium", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Aluminium" },
+  { key: "steel", materialKey: "Steel", label: "Steel", material: "Steel", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Steel" },
+  { key: "wood", materialKey: "Wood", label: "Wood", material: "Wood", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Wood" },
+  { key: "glass", materialKey: "Glass", label: "Glass", material: "Glass", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Glass" },
+  { key: "other", materialKey: "Other", label: "Other", material: "Other", subtype: null, taxonomyCategory: "Material", taxonomyCode: "Other" },
+];
+
+const DEFAULT_MATERIAL_EDIT: MaterialEditState = {
+  selected: false,
+  weightValue: "",
+  weightUnit: "kg",
+};
+
+function materialLookupKey(material: string, subtype: string | null): string {
+  return `${material.toLowerCase()}::${(subtype ?? "").toLowerCase()}`;
+}
+
 type ReviewDetail = {
   task: {
     task_id: string;
@@ -78,17 +139,40 @@ type ReviewDetail = {
     candidates: unknown[];
     rule_reason: string | null;
   };
+  materials?: ReviewMaterial[];
 };
 
 type ReportRow = {
   report_id: string;
-  document_id: string;
+  document_id: string | null;
+  batch_id: string | null;
   filename: string;
   status: string;
   row_count: number;
+  warning_count: number;
+  validation_warnings: {
+    missing_fields_by_row: Array<{
+      row_index: number;
+      material_key: string;
+      missing_fields: string[];
+      document_id?: string;
+      filename?: string;
+    }>;
+    overall: string[];
+    per_document?: Array<{
+      document_id: string;
+      filename: string;
+      warning_count: number;
+      missing_weight_count: number;
+      overall: string[];
+    }>;
+    total_warning_count?: number;
+  } | null;
   submission_period: string | null;
   created_at: string | null;
   download_endpoint: string;
+  report_scope: "document" | "batch";
+  document_count: number | null;
 };
 
 type PresignResponse = {
@@ -106,6 +190,72 @@ type FinaliseResponse = {
   status: string;
 };
 
+type BatchCreateResponse = {
+  batch_id: string;
+  status: string;
+  uploads: Array<{
+    upload_id: string;
+    filename: string;
+    upload_url: string;
+    bucket: string;
+    object_key: string;
+    expires_in: number;
+  }>;
+};
+
+type ZipBatchPresignResponse = {
+  batch_id: string;
+  upload_id: string;
+  upload_url: string;
+};
+
+type ZipBatchFinaliseResponse = {
+  batch_id: string;
+  accepted_count: number;
+  rejected_count: number;
+  accepted_files: Array<{
+    filename: string;
+    document_id: string;
+  }>;
+  rejected_files: Array<{
+    filename: string;
+    reason: string;
+  }>;
+};
+
+type BatchFinaliseResponse = {
+  batch_id: string;
+  status: string;
+  document_ids: string[];
+  job_ids: string[];
+};
+
+type BatchRunResult = {
+  document_id: string;
+  job_id: string;
+  status: string;
+  report_id: string | null;
+  review_task_count: number;
+  error?: string;
+};
+
+type BatchRunResponse = {
+  batch_id: string;
+  status: string;
+  job_ids: string[];
+  results: BatchRunResult[];
+};
+
+type BatchReportResponse = {
+  batch_id: string;
+  report_id: string;
+  status: string;
+  row_count: number;
+  warning_count: number;
+  validation_warnings: ReportRow["validation_warnings"];
+  download_endpoint: string;
+};
+
 type PipelineRunResponse = {
   document_id: string;
   status: string;
@@ -118,6 +268,7 @@ type ApiError = { detail: string } | { message: string } | { error: string };
 type ReviewCorrectionResponse = {
   task_id: string;
   status: string;
+  detail?: string;
   rerun: {
     document_id: string;
     status: string;
@@ -126,88 +277,26 @@ type ReviewCorrectionResponse = {
   };
 };
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null;
-}
+type BatchFileProgress = {
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+  uploadId: string | null;
+  documentId: string | null;
+  jobId: string | null;
+  reportId: string | null;
+  status:
+    | "selected"
+    | "presigned"
+    | "uploaded"
+    | "queued"
+    | "running"
+    | "complete"
+    | "failed";
+  error: string | null;
+};
 
-function buildHeaders(auth: AuthContext, includeJson: boolean = true): HeadersInit {
-  const headers: Record<string, string> = {
-    "X-User-Id": auth.userId,
-    "X-Tenant-Id": auth.tenantId,
-  };
-  if (includeJson) {
-    headers["Content-Type"] = "application/json";
-  }
-  return headers;
-}
-
-function resolveApiPath(path: string): string {
-  if (path.startsWith("http://") || path.startsWith("https://")) {
-    return path;
-  }
-  if (path.startsWith("/")) {
-    return `${API_ORIGIN}${path}`;
-  }
-  return `${API_BASE}/${path}`;
-}
-
-function getErrorMessage(res: unknown): string | null {
-  if (typeof res === "string") {
-    return res;
-  }
-  if (!isRecord(res)) {
-    return null;
-  }
-  if ("detail" in res && typeof res.detail === "string") {
-    return res.detail;
-  }
-  if ("message" in res && typeof res.message === "string") {
-    return res.message;
-  }
-  if ("error" in res && typeof res.error === "string") {
-    return res.error;
-  }
-  return null;
-}
-
-function extractErrorMessage(payload: unknown): string {
-  return getErrorMessage(payload) ?? "Request failed";
-}
-
-async function apiRequest<T>(path: string, auth: AuthContext, init?: RequestInit): Promise<T> {
-  const response = await fetch(resolveApiPath(path), {
-    ...init,
-    headers: {
-      ...buildHeaders(auth, !(init?.body instanceof FormData)),
-      ...(init?.headers ?? {}),
-    },
-  });
-
-  const contentType = response.headers.get("content-type") ?? "";
-  let payload: unknown = null;
-  if (contentType.includes("application/json")) {
-    payload = await response.json();
-  } else {
-    payload = await response.text();
-  }
-
-  if (!response.ok) {
-    throw new Error(extractErrorMessage(payload));
-  }
-
-  return payload as T;
-}
-
-async function fetchImageBlob(path: string, auth: AuthContext): Promise<string> {
-  const response = await fetch(resolveApiPath(path), {
-    headers: buildHeaders(auth, false),
-  });
-  if (!response.ok) {
-    throw new Error(`Image fetch failed (${response.status})`);
-  }
-  const blob = await response.blob();
-  return URL.createObjectURL(blob);
-}
+// API client functions imported from ./api
 
 function formatTimestamp(value: string | null): string {
   if (!value) {
@@ -250,18 +339,29 @@ export function App() {
     userId: DEFAULT_USER_ID,
     tenantId: DEFAULT_TENANT_ID,
   });
+  const [currentDocumentId, setCurrentDocumentId] = useState<string | null>(null);
+  const [currentBatchId, setCurrentBatchId] = useState<string | null>(null);
+  const [reviewQueueMode, setReviewQueueMode] = useState<ReviewQueueMode>("current");
 
   const [jobs, setJobs] = useState<JobRow[]>([]);
   const [reviewTasks, setReviewTasks] = useState<ReviewTaskRow[]>([]);
   const [reports, setReports] = useState<ReportRow[]>([]);
+  const [expandedWarnings, setExpandedWarnings] = useState<Record<string, boolean>>({});
 
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [uploadMode, setUploadMode] = useState<UploadMode>("multiple");
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  const [selectedZipFile, setSelectedZipFile] = useState<File | null>(null);
+  const [batchProgress, setBatchProgress] = useState<BatchFileProgress[]>([]);
+  const [latestBatchReport, setLatestBatchReport] = useState<BatchReportResponse | null>(null);
+  const [zipFinaliseSummary, setZipFinaliseSummary] = useState<ZipBatchFinaliseResponse | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [reviewDetail, setReviewDetail] = useState<ReviewDetail | null>(null);
   const [selectedPageNo, setSelectedPageNo] = useState<number | null>(null);
   const [imageUrl, setImageUrl] = useState<string | null>(null);
   const [fieldEdits, setFieldEdits] = useState<Record<string, string>>({});
   const [classificationSelection, setClassificationSelection] = useState<string>("");
+  const [materialEdits, setMaterialEdits] = useState<Record<string, MaterialEditState>>({});
+  const [materialOptions, setMaterialOptions] = useState<MaterialOption[]>(FALLBACK_MATERIAL_OPTIONS);
 
   const [loading, setLoading] = useState<boolean>(false);
   const [message, setMessage] = useState<string>("Ready.");
@@ -272,7 +372,21 @@ export function App() {
 
   useEffect(() => {
     void refreshDashboard();
+    // Fetch canonical material options from the backend.
+    apiRequest<MaterialOption[]>("/review/material-options", auth)
+      .then((options) => {
+        if (Array.isArray(options) && options.length > 0) {
+          setMaterialOptions(options);
+        }
+      })
+      .catch(() => {
+        // Keep fallback options on error — non-critical.
+      });
   }, []);
+
+  useEffect(() => {
+    void loadReviewTasks();
+  }, [reviewQueueMode, currentDocumentId, auth]);
 
   useEffect(() => {
     if (!reviewDetail) {
@@ -294,6 +408,30 @@ export function App() {
     } else {
       setClassificationSelection("");
     }
+
+    const nextMaterialEdits: Record<string, MaterialEditState> = {};
+    for (const option of materialOptions) {
+      nextMaterialEdits[option.key] = { ...DEFAULT_MATERIAL_EDIT };
+    }
+    const optionByMaterial = new Map<string, MaterialOption>();
+    for (const option of materialOptions) {
+      optionByMaterial.set(materialLookupKey(option.material, option.subtype), option);
+    }
+    for (const row of reviewDetail.materials ?? []) {
+      const optionByKey = materialOptions.find(
+        (item) => (row.material_key ?? "").toLowerCase() === item.materialKey.toLowerCase(),
+      );
+      const option = optionByKey ?? optionByMaterial.get(materialLookupKey(row.material, row.subtype));
+      if (!option) {
+        continue;
+      }
+      nextMaterialEdits[option.key] = {
+        selected: true,
+        weightValue: row.weight_value === null ? "" : String(row.weight_value),
+        weightUnit: row.weight_unit || "kg",
+      };
+    }
+    setMaterialEdits(nextMaterialEdits);
   }, [reviewDetail]);
 
   useEffect(() => {
@@ -308,17 +446,25 @@ export function App() {
       return;
     }
 
+    const controller = new AbortController();
     let revokedUrl: string | null = null;
-    void fetchImageBlob(page.image_endpoint, auth)
+    void fetchImageBlob(page.image_endpoint, auth, controller.signal)
       .then((url) => {
+        if (controller.signal.aborted) {
+          URL.revokeObjectURL(url);
+          return;
+        }
         revokedUrl = url;
         setImageUrl(url);
       })
       .catch(() => {
-        setImageUrl(null);
+        if (!controller.signal.aborted) {
+          setImageUrl(null);
+        }
       });
 
     return () => {
+      controller.abort();
       if (revokedUrl) {
         URL.revokeObjectURL(revokedUrl);
       }
@@ -335,7 +481,14 @@ export function App() {
   }
 
   async function loadReviewTasks(): Promise<void> {
-    const payload = await apiRequest<{ tasks: ReviewTaskRow[] }>("/review/tasks?status=pending", auth);
+    const params = new URLSearchParams({ status: "pending" });
+    if (reviewQueueMode === "current" && currentDocumentId) {
+      params.set("document_id", currentDocumentId);
+    }
+    const payload = await apiRequest<{ tasks: ReviewTaskRow[] }>(
+      `/review/tasks?${params.toString()}`,
+      auth,
+    );
     setReviewTasks(payload.tasks);
   }
 
@@ -352,90 +505,217 @@ export function App() {
   }
 
   async function runPipeline(documentId: string): Promise<PipelineRunResponse | ApiError> {
-    const response = await fetch(resolveApiPath(`/pipeline/run/${documentId}`), {
+    try {
+      return await apiRequest<PipelineRunResponse>(`/pipeline/run/${documentId}`, auth, {
+        method: "POST",
+      });
+    } catch (error) {
+      return { detail: error instanceof Error ? error.message : "Pipeline run failed" };
+    }
+  }
+
+  function updateBatchProgress(
+    matcher: (item: BatchFileProgress) => boolean,
+    patch: Partial<BatchFileProgress>,
+  ): void {
+    setBatchProgress((prev) =>
+      prev.map((item) => (matcher(item) ? { ...item, ...patch } : item)),
+    );
+  }
+
+  async function createCombinedReport(batchId: string): Promise<BatchReportResponse> {
+    return await apiRequest<BatchReportResponse>(`/batches/${batchId}/reports/export`, auth, {
       method: "POST",
     });
-    const contentType = response.headers.get("content-type") ?? "";
-    let payload: unknown = null;
-    if (contentType.includes("application/json")) {
-      payload = await response.json();
-    } else {
-      payload = await response.text();
+  }
+
+  async function uploadFileToPresignedUrl(file: File, uploadUrl: string, contentType: string): Promise<void> {
+    if (!uploadUrl.startsWith("http://") && !uploadUrl.startsWith("https://")) {
+      throw new Error("Presigned URL is not HTTP. Run through Docker MinIO for browser uploads.");
     }
-    if (
-      response.ok &&
-      isRecord(payload) &&
-      typeof payload.document_id === "string" &&
-      typeof payload.status === "string" &&
-      typeof payload.report_id === "string" &&
-      typeof payload.review_task_count === "number"
-    ) {
-      return payload as PipelineRunResponse;
+
+    const uploadResponse = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: {
+        "Content-Type": contentType,
+      },
+      body: file,
+    });
+    if (!uploadResponse.ok) {
+      throw new Error(`${file.name}: upload failed (${uploadResponse.status}).`);
     }
-    return { detail: getErrorMessage(payload) ?? "Pipeline run failed" };
+  }
+
+  async function handleDownloadReport(report: ReportRow): Promise<void> {
+    setLoading(true);
+    setMessage(`Downloading report ${shortId(report.report_id)}...`);
+    try {
+      const response = await fetch(resolveApiPath(report.download_endpoint), {
+        method: "GET",
+        headers: buildHeaders(auth, false),
+      });
+
+      if (!response.ok) {
+        const contentType = response.headers.get("content-type") ?? "";
+        const payload = contentType.includes("application/json")
+          ? await response.json()
+          : await response.text();
+        throw new Error(
+          extractErrorMessage(payload) || `Download failed (${response.status})`,
+        );
+      }
+
+      const blob = await response.blob();
+      const disposition = response.headers.get("content-disposition") ?? "";
+      const match = disposition.match(/filename=\"?([^\";]+)\"?/i);
+      const filename = match?.[1] ?? `${report.report_id}.csv`;
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      URL.revokeObjectURL(objectUrl);
+      setMessage(`Downloaded report ${shortId(report.report_id)}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Download failed.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   async function handleUpload(event: FormEvent): Promise<void> {
     event.preventDefault();
-    if (!selectedFile) {
-      setMessage("Select a file first.");
+    if (selectedFiles.length === 0) {
+      setMessage("Select at least one file first.");
       return;
     }
 
     setLoading(true);
-    setMessage("Creating upload URL...");
+    setLatestBatchReport(null);
+    setZipFinaliseSummary(null);
+    setBatchProgress(
+      selectedFiles.map((file) => ({
+        filename: file.name,
+        mimeType: file.type || "application/octet-stream",
+        sizeBytes: file.size,
+        uploadId: null,
+        documentId: null,
+        jobId: null,
+        reportId: null,
+        status: "selected",
+        error: null,
+      })),
+    );
+    setMessage(`Creating batch upload URLs for ${selectedFiles.length} file(s)...`);
 
     try {
-      const presign = await apiRequest<PresignResponse>("/documents/upload/presign", auth, {
+      const batch = await apiRequest<BatchCreateResponse>("/batches", auth, {
         method: "POST",
         body: JSON.stringify({
-          filename: selectedFile.name,
-          mime_type: selectedFile.type || "application/octet-stream",
-          size_bytes: selectedFile.size,
+          name: `Batch ${new Date().toISOString()}`,
+          files: selectedFiles.map((file) => ({
+            filename: file.name,
+            mime_type: file.type || "application/octet-stream",
+            size_bytes: file.size,
+          })),
         }),
       });
+      setCurrentBatchId(batch.batch_id);
+      setBatchProgress((prev) =>
+        prev.map((item, index) => {
+          const upload = batch.uploads[index];
+          return upload
+            ? { ...item, uploadId: upload.upload_id, status: "presigned" }
+            : item;
+        }),
+      );
 
-      if (!presign.upload_url.startsWith("http://") && !presign.upload_url.startsWith("https://")) {
-        throw new Error("Presigned URL is not HTTP. Run through Docker MinIO for browser uploads.");
+      for (const [index, file] of selectedFiles.entries()) {
+        const upload = batch.uploads[index];
+        if (!upload) {
+          throw new Error(`Missing upload session for ${file.name}.`);
+        }
+
+        setMessage(`Uploading ${file.name}...`);
+        try {
+          await uploadFileToPresignedUrl(
+            file,
+            upload.upload_url,
+            file.type || "application/octet-stream",
+          );
+        } catch (error) {
+          updateBatchProgress(
+            (item) => item.uploadId === upload.upload_id,
+            {
+              status: "failed",
+              error: error instanceof Error ? error.message : "Upload failed.",
+            },
+          );
+          throw error;
+        }
+        updateBatchProgress((item) => item.uploadId === upload.upload_id, { status: "uploaded" });
       }
 
-      setMessage("Uploading to object storage...");
-      const uploadResponse = await fetch(presign.upload_url, {
-        method: "PUT",
-        headers: {
-          "Content-Type": selectedFile.type || "application/octet-stream",
+      setMessage("Finalising batch and creating document jobs...");
+      const finalise = await apiRequest<BatchFinaliseResponse>(
+        `/batches/${batch.batch_id}/finalise`,
+        auth,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            upload_ids: batch.uploads.map((entry) => entry.upload_id),
+          }),
         },
-        body: selectedFile,
-      });
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed (${uploadResponse.status}).`);
+      );
+
+      setBatchProgress((prev) =>
+        prev.map((item, index) => ({
+          ...item,
+          documentId: finalise.document_ids[index] ?? item.documentId,
+          jobId: finalise.job_ids[index] ?? item.jobId,
+          status: "queued",
+        })),
+      );
+      if (finalise.document_ids.length === 1) {
+        setCurrentDocumentId(finalise.document_ids[0]);
+        setReviewQueueMode("current");
+      } else {
+        setCurrentDocumentId(null);
+        setReviewQueueMode("all");
       }
 
-      setMessage("Finalising upload and creating job...");
-      const finalise = await apiRequest<FinaliseResponse>("/documents/upload/finalise", auth, {
+      setBatchProgress((prev) => prev.map((item) => ({ ...item, status: "running" })));
+      setMessage("Running pipeline for batch...");
+      const runResponse = await apiRequest<BatchRunResponse>(`/batches/${batch.batch_id}/run`, auth, {
         method: "POST",
-        body: JSON.stringify({ upload_id: presign.upload_id }),
       });
+      setBatchProgress((prev) =>
+        prev.map((item) => {
+          const match = runResponse.results.find((entry) => entry.document_id === item.documentId);
+          if (!match) {
+            return item;
+          }
+          return {
+            ...item,
+            jobId: match.job_id,
+            reportId: match.report_id,
+            status: match.status === "COMPLETE" ? "complete" : "failed",
+            error: match.error ?? null,
+          };
+        }),
+      );
 
-      setMessage("Running pipeline for uploaded document...");
-      const runResult = await runPipeline(finalise.document_id);
-      if ("detail" in runResult) {
-        setMessage(runResult.detail);
-        return;
-      }
-      if ("message" in runResult) {
-        setMessage(runResult.message);
-        return;
-      }
-      if ("error" in runResult) {
-        setMessage(runResult.error);
-        return;
-      }
-
+      setMessage("Creating combined DEFRA report...");
+      const combinedReport = await createCombinedReport(batch.batch_id);
+      setLatestBatchReport(combinedReport);
       await refreshDashboard();
-      setScreen("jobs");
-      setSelectedFile(null);
-      setMessage(`Upload complete. Job ${shortId(finalise.job_id)} is ${runResult.status}.`);
+      setScreen("reports");
+      setSelectedFiles([]);
+      setMessage(
+        `Batch complete. Combined report ${shortId(combinedReport.report_id)} has ${combinedReport.row_count} row(s).`,
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Upload failed.");
     } finally {
@@ -443,8 +723,143 @@ export function App() {
     }
   }
 
+  async function handleZipUpload(event: FormEvent): Promise<void> {
+    event.preventDefault();
+    if (!selectedZipFile) {
+      setMessage("Select a ZIP file first.");
+      return;
+    }
+
+    setLoading(true);
+    setLatestBatchReport(null);
+    setZipFinaliseSummary(null);
+    setBatchProgress([]);
+    setMessage(`Creating ZIP batch upload for ${selectedZipFile.name}...`);
+
+    try {
+      const presign = await apiRequest<ZipBatchPresignResponse>("/batches/upload-zip/presign", auth, {
+        method: "POST",
+        body: JSON.stringify({
+          filename: selectedZipFile.name,
+          mime_type: selectedZipFile.type || "application/zip",
+          size_bytes: selectedZipFile.size,
+          name: `ZIP Batch ${new Date().toISOString()}`,
+        }),
+      });
+
+      setCurrentBatchId(presign.batch_id);
+      setMessage(`Uploading ZIP ${selectedZipFile.name}...`);
+      await uploadFileToPresignedUrl(
+        selectedZipFile,
+        presign.upload_url,
+        selectedZipFile.type || "application/zip",
+      );
+
+      setMessage("Finalising ZIP and extracting supported invoices...");
+      const finalise = await apiRequest<ZipBatchFinaliseResponse>(
+        `/batches/${presign.batch_id}/finalise-zip`,
+        auth,
+        {
+          method: "POST",
+          body: JSON.stringify({ upload_id: presign.upload_id }),
+        },
+      );
+
+      setZipFinaliseSummary(finalise);
+      setBatchProgress(
+        finalise.accepted_files.map((entry) => ({
+          filename: entry.filename,
+          mimeType: "application/octet-stream",
+          sizeBytes: 0,
+          uploadId: presign.upload_id,
+          documentId: entry.document_id,
+          jobId: null,
+          reportId: null,
+          status: "queued",
+          error: null,
+        })),
+      );
+
+      if (finalise.accepted_files.length === 0) {
+        setCurrentDocumentId(null);
+        setReviewQueueMode("all");
+        await refreshDashboard();
+        setMessage(
+          `ZIP finalised with no accepted documents. Rejected: ${finalise.rejected_count}.`,
+        );
+        return;
+      }
+
+      if (finalise.accepted_files.length === 1) {
+        setCurrentDocumentId(finalise.accepted_files[0].document_id);
+        setReviewQueueMode("current");
+      } else {
+        setCurrentDocumentId(null);
+        setReviewQueueMode("all");
+      }
+
+      setBatchProgress((prev) => prev.map((item) => ({ ...item, status: "running" })));
+      setMessage("Running pipeline for ZIP batch...");
+      const runResponse = await apiRequest<BatchRunResponse>(`/batches/${presign.batch_id}/run`, auth, {
+        method: "POST",
+      });
+      setBatchProgress((prev) =>
+        prev.map((item) => {
+          const match = runResponse.results.find((entry) => entry.document_id === item.documentId);
+          if (!match) {
+            return item;
+          }
+          return {
+            ...item,
+            jobId: match.job_id,
+            reportId: match.report_id,
+            status: match.status === "COMPLETE" ? "complete" : "failed",
+            error: match.error ?? null,
+          };
+        }),
+      );
+
+      setMessage("Creating combined DEFRA report...");
+      const combinedReport = await createCombinedReport(presign.batch_id);
+      setLatestBatchReport(combinedReport);
+      await refreshDashboard();
+      setScreen("reports");
+      setSelectedZipFile(null);
+      setMessage(
+        `ZIP batch complete. Accepted ${finalise.accepted_count}, rejected ${finalise.rejected_count}. Combined report ${shortId(combinedReport.report_id)} has ${combinedReport.row_count} row(s).`,
+      );
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "ZIP batch upload failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleCreateCombinedReport(): Promise<void> {
+    if (!currentBatchId) {
+      setMessage("Run a batch first.");
+      return;
+    }
+
+    setLoading(true);
+    setMessage("Creating combined DEFRA report...");
+    try {
+      const payload = await createCombinedReport(currentBatchId);
+      setLatestBatchReport(payload);
+      await loadReports();
+      setScreen("reports");
+      setMessage(`Combined report ${shortId(payload.report_id)} generated.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Combined report generation failed.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
   async function handleRunJob(documentId: string): Promise<void> {
     setLoading(true);
+    setCurrentDocumentId(documentId);
+    setReviewQueueMode("current");
     setMessage(`Running pipeline for document ${shortId(documentId)}...`);
     try {
       const runResult = await runPipeline(documentId);
@@ -488,6 +903,23 @@ export function App() {
       }
     }
 
+    const materials = materialOptions.filter(
+      (option) => materialEdits[option.key]?.selected,
+    ).map((option) => {
+      const edit = materialEdits[option.key] ?? DEFAULT_MATERIAL_EDIT;
+      const parsedWeight = Number.parseFloat(edit.weightValue);
+      return {
+        material_key: option.materialKey,
+        material: option.material,
+        subtype: option.subtype,
+        taxonomy_category: option.taxonomyCategory,
+        taxonomy_code: option.taxonomyCode,
+        weight_value: Number.isFinite(parsedWeight) ? parsedWeight : null,
+        weight_unit: edit.weightUnit.trim() || null,
+        source: "review",
+      };
+    });
+
     setLoading(true);
     setMessage("Saving corrections and rerunning downstream stages...");
 
@@ -500,10 +932,17 @@ export function App() {
           body: JSON.stringify({
             extracted_fields: extractedFields,
             classification_choice: classificationChoice,
+            materials,
             reviewer: auth.userId,
           }),
         },
       );
+
+      if (payload.status !== "resolved") {
+        await refreshDashboard();
+        setMessage(payload.detail ?? "Additional review required before report generation.");
+        return;
+      }
 
       await refreshDashboard();
       setReviewDetail(null);
@@ -604,68 +1043,225 @@ export function App() {
       {screen === "upload" && (
         <section style={{ ...cardStyle, marginTop: "1rem" }}>
           <h2 style={{ marginTop: 0 }}>Upload</h2>
-          <form onSubmit={(event) => void handleUpload(event)} style={{ display: "grid", gap: "0.8rem" }}>
-            <input
-              type="file"
-              accept="application/pdf,image/png,image/jpeg,image/tiff"
-              onChange={(event) => {
-                const nextFile = event.target.files?.[0] ?? null;
-                setSelectedFile(nextFile);
-              }}
-            />
-            <button type="submit" disabled={loading || !selectedFile}>
-              Upload + Run Pipeline
-            </button>
-          </form>
+          <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap", marginBottom: "1rem" }}>
+            <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+              <input
+                type="radio"
+                name="upload-mode"
+                checked={uploadMode === "multiple"}
+                onChange={() => {
+                  setUploadMode("multiple");
+                  setSelectedZipFile(null);
+                  setBatchProgress([]);
+                  setZipFinaliseSummary(null);
+                }}
+              />
+              Multiple files
+            </label>
+            <label style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+              <input
+                type="radio"
+                name="upload-mode"
+                checked={uploadMode === "zip"}
+                onChange={() => {
+                  setUploadMode("zip");
+                  setSelectedFiles([]);
+                  setBatchProgress([]);
+                  setZipFinaliseSummary(null);
+                }}
+              />
+              ZIP batch
+            </label>
+          </div>
+
+          {uploadMode === "multiple" ? (
+            <form onSubmit={(event) => void handleUpload(event)} style={{ display: "grid", gap: "0.8rem" }}>
+              <input
+                type="file"
+                multiple
+                accept="application/pdf,image/png,image/jpeg,image/tiff"
+                onChange={(event) => {
+                  const nextFiles = Array.from(event.target.files ?? []);
+                  setSelectedFiles(nextFiles);
+                  setBatchProgress([]);
+                  setLatestBatchReport(null);
+                  setZipFinaliseSummary(null);
+                }}
+              />
+              <div style={{ opacity: 0.8 }}>
+                {selectedFiles.length > 0
+                  ? `${selectedFiles.length} file(s) selected`
+                  : "Select one or more invoices/receipts."}
+              </div>
+              <button type="submit" disabled={loading || selectedFiles.length === 0}>
+                Upload + Run Pipeline (Batch)
+              </button>
+              {currentBatchId && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleCreateCombinedReport()}
+                >
+                  Create Combined Report
+                </button>
+              )}
+            </form>
+          ) : (
+            <form onSubmit={(event) => void handleZipUpload(event)} style={{ display: "grid", gap: "0.8rem" }}>
+              <input
+                type="file"
+                accept=".zip,application/zip,application/x-zip-compressed"
+                onChange={(event) => {
+                  const nextZip = event.target.files?.[0] ?? null;
+                  setSelectedZipFile(nextZip);
+                  setBatchProgress([]);
+                  setLatestBatchReport(null);
+                  setZipFinaliseSummary(null);
+                }}
+              />
+              <div style={{ opacity: 0.8 }}>
+                {selectedZipFile
+                  ? `Selected ZIP: ${selectedZipFile.name}`
+                  : "Select one ZIP containing receipts/invoices."}
+              </div>
+              <button type="submit" disabled={loading || !selectedZipFile}>
+                Upload ZIP + Process Batch
+              </button>
+              {currentBatchId && (
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={() => void handleCreateCombinedReport()}
+                >
+                  Export Combined Report
+                </button>
+              )}
+            </form>
+          )}
+
+          <div style={{ marginTop: "1rem" }}>
+            <h3 style={{ marginBottom: "0.4rem" }}>Batch progress</h3>
+            <table style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th align="left">File</th>
+                  <th align="left">Status</th>
+                  <th align="left">Document</th>
+                  <th align="left">Job</th>
+                  <th align="left">Report</th>
+                  <th align="left">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {batchProgress.map((item) => (
+                  <tr key={`${item.filename}-${item.uploadId ?? "pending"}`}>
+                    <td>{item.filename}</td>
+                    <td>{item.status}</td>
+                    <td>{item.documentId ? shortId(item.documentId) : "-"}</td>
+                    <td>{item.jobId ? shortId(item.jobId) : "-"}</td>
+                    <td>{item.reportId ? shortId(item.reportId) : "-"}</td>
+                    <td>{item.error ?? "-"}</td>
+                  </tr>
+                ))}
+                {batchProgress.length === 0 && (
+                  <tr>
+                    <td colSpan={6}>No batch activity yet.</td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+
+          {zipFinaliseSummary && (
+            <div style={{ marginTop: "1rem", display: "grid", gap: "0.8rem" }}>
+              <div
+                style={{
+                  padding: "0.75rem",
+                  border: "1px solid #c4d3cb",
+                  borderRadius: "10px",
+                }}
+              >
+                <strong>ZIP finalise summary:</strong> Accepted {zipFinaliseSummary.accepted_count} | Rejected{" "}
+                {zipFinaliseSummary.rejected_count}
+              </div>
+
+              <div style={{ display: "grid", gap: "0.4rem" }}>
+                <strong>Accepted files</strong>
+                {zipFinaliseSummary.accepted_files.length > 0 ? (
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                    {zipFinaliseSummary.accepted_files.map((entry) => (
+                      <li key={`${entry.filename}-${entry.document_id}`}>
+                        {entry.filename} ({shortId(entry.document_id)})
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div>No supported documents were extracted from this ZIP.</div>
+                )}
+              </div>
+
+              <div style={{ display: "grid", gap: "0.4rem" }}>
+                <strong>Rejected files</strong>
+                {zipFinaliseSummary.rejected_files.length > 0 ? (
+                  <ul style={{ margin: 0, paddingLeft: "1.2rem" }}>
+                    {zipFinaliseSummary.rejected_files.map((entry) => (
+                      <li key={`${entry.filename}-${entry.reason}`}>
+                        {entry.filename}: {entry.reason}
+                      </li>
+                    ))}
+                  </ul>
+                ) : (
+                  <div>No rejected files.</div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {latestBatchReport && (
+            <div style={{ marginTop: "1rem", padding: "0.75rem", border: "1px solid #c4d3cb", borderRadius: "10px" }}>
+              <strong>Latest combined report:</strong> {shortId(latestBatchReport.report_id)}<br />
+              Rows: {latestBatchReport.row_count} | Warnings: {latestBatchReport.warning_count}
+            </div>
+          )}
         </section>
       )}
 
       {screen === "jobs" && (
-        <section style={{ ...cardStyle, marginTop: "1rem" }}>
-          <h2 style={{ marginTop: 0 }}>Jobs List + Status</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th align="left">Job</th>
-                <th align="left">File</th>
-                <th align="left">Document Status</th>
-                <th align="left">Stage</th>
-                <th align="left">Created</th>
-                <th align="left">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {jobs.map((job) => (
-                <tr key={job.job_id}>
-                  <td>{shortId(job.job_id)}</td>
-                  <td>{job.filename}</td>
-                  <td>{job.status}</td>
-                  <td>{job.current_stage}</td>
-                  <td>{formatTimestamp(job.created_at)}</td>
-                  <td>
-                    <button
-                      type="button"
-                      disabled={loading}
-                      onClick={() => void handleRunJob(job.document_id)}
-                    >
-                      Run
-                    </button>
-                  </td>
-                </tr>
-              ))}
-              {jobs.length === 0 && (
-                <tr>
-                  <td colSpan={6}>No jobs yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
+        <JobsScreen
+          jobs={jobs}
+          loading={loading}
+          cardStyle={cardStyle}
+          onRunJob={(documentId) => void handleRunJob(documentId)}
+          formatTimestamp={formatTimestamp}
+          shortId={shortId}
+        />
       )}
 
       {screen === "review" && (
         <section style={{ ...cardStyle, marginTop: "1rem" }}>
           <h2 style={{ marginTop: 0 }}>Review Tasks Queue</h2>
+          <div style={{ display: "flex", gap: "0.5rem", alignItems: "center", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+            <span>Show:</span>
+            <button
+              type="button"
+              disabled={loading || !currentDocumentId}
+              onClick={() => setReviewQueueMode("current")}
+            >
+              current document
+            </button>
+            <button
+              type="button"
+              disabled={loading}
+              onClick={() => setReviewQueueMode("all")}
+            >
+              all pending
+            </button>
+            {reviewQueueMode === "current" && currentDocumentId && (
+              <span style={{ opacity: 0.8 }}>
+                Document {shortId(currentDocumentId)}
+              </span>
+            )}
+          </div>
           <table style={{ width: "100%", borderCollapse: "collapse" }}>
             <thead>
               <tr>
@@ -774,6 +1370,92 @@ export function App() {
                   <p>No classification candidates available.</p>
                 )}
               </div>
+
+              <h3>Materials + Weights (multi-row export)</h3>
+              <div style={{ display: "grid", gap: "0.3rem" }}>
+                {materialOptions.map((option) => {
+                  const edit = materialEdits[option.key] ?? DEFAULT_MATERIAL_EDIT;
+                  return (
+                    <label key={option.key}>
+                      <input
+                        type="checkbox"
+                        checked={edit.selected}
+                        onChange={(event) =>
+                          setMaterialEdits((prev) => ({
+                            ...prev,
+                            [option.key]: {
+                              ...(prev[option.key] ?? DEFAULT_MATERIAL_EDIT),
+                              selected: event.target.checked,
+                            },
+                          }))
+                        }
+                      />
+                      {" "}
+                      {option.label}
+                    </label>
+                  );
+                })}
+              </div>
+
+              <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "0.6rem" }}>
+                <thead>
+                  <tr>
+                    <th align="left">Material</th>
+                    <th align="left">Weight</th>
+                    <th align="left">Unit</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {materialOptions.filter((option) => materialEdits[option.key]?.selected).map(
+                    (option) => {
+                      const edit = materialEdits[option.key] ?? DEFAULT_MATERIAL_EDIT;
+                      return (
+                        <tr key={`${option.key}-row`}>
+                          <td>{option.label}</td>
+                          <td>
+                            <input
+                              value={edit.weightValue}
+                              onChange={(event) =>
+                                setMaterialEdits((prev) => ({
+                                  ...prev,
+                                  [option.key]: {
+                                    ...(prev[option.key] ?? DEFAULT_MATERIAL_EDIT),
+                                    weightValue: event.target.value,
+                                  },
+                                }))
+                              }
+                              placeholder="e.g. 12.5"
+                            />
+                          </td>
+                          <td>
+                            <select
+                              value={edit.weightUnit}
+                              onChange={(event) =>
+                                setMaterialEdits((prev) => ({
+                                  ...prev,
+                                  [option.key]: {
+                                    ...(prev[option.key] ?? DEFAULT_MATERIAL_EDIT),
+                                    weightUnit: event.target.value,
+                                  },
+                                }))
+                              }
+                            >
+                              <option value="">Select</option>
+                              <option value="g">g</option>
+                              <option value="kg">kg</option>
+                            </select>
+                          </td>
+                        </tr>
+                      );
+                    },
+                  )}
+                  {materialOptions.every((option) => !materialEdits[option.key]?.selected) && (
+                    <tr>
+                      <td colSpan={3}>No materials selected.</td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
 
@@ -790,42 +1472,21 @@ export function App() {
       )}
 
       {screen === "reports" && (
-        <section style={{ ...cardStyle, marginTop: "1rem" }}>
-          <h2 style={{ marginTop: 0 }}>Reports List + Download</h2>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr>
-                <th align="left">Report</th>
-                <th align="left">File</th>
-                <th align="left">Status</th>
-                <th align="left">Rows</th>
-                <th align="left">Created</th>
-                <th align="left">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {reports.map((report) => (
-                <tr key={report.report_id}>
-                  <td>{shortId(report.report_id)}</td>
-                  <td>{report.filename}</td>
-                  <td>{report.status}</td>
-                  <td>{report.row_count}</td>
-                  <td>{formatTimestamp(report.created_at)}</td>
-                  <td>
-                    <a href={resolveApiPath(report.download_endpoint)} target="_blank" rel="noreferrer">
-                      Download CSV
-                    </a>
-                  </td>
-                </tr>
-              ))}
-              {reports.length === 0 && (
-                <tr>
-                  <td colSpan={6}>No reports generated yet.</td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </section>
+        <ReportsScreen
+          reports={reports}
+          loading={loading}
+          cardStyle={cardStyle}
+          expandedWarnings={expandedWarnings}
+          onToggleWarning={(reportId) =>
+            setExpandedWarnings((prev) => ({
+              ...prev,
+              [reportId]: !prev[reportId],
+            }))
+          }
+          onDownloadReport={(report) => void handleDownloadReport(report)}
+          formatTimestamp={formatTimestamp}
+          shortId={shortId}
+        />
       )}
     </main>
   );

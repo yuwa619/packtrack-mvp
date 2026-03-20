@@ -30,12 +30,21 @@ class Document(Base):
     subsidiary_id: Mapped[str | None] = mapped_column(String(64), nullable=True)
     organisation_size: Mapped[str | None] = mapped_column(String(1), nullable=True)
     submission_period: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    document_type: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    document_date: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    inferred_country_code: Mapped[str | None] = mapped_column(String(8), nullable=True)
+    country_inference_source: Mapped[str | None] = mapped_column(String(32), nullable=True)
     original_filename: Mapped[str] = mapped_column(String(255), nullable=False)
     mime_type: Mapped[str] = mapped_column(String(128), nullable=False)
     file_size_bytes: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     checksum_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True)
     uploaded_by: Mapped[str | None] = mapped_column(String(128), nullable=True)
     storage_path: Mapped[str] = mapped_column(String(512), nullable=False)
+    ner_model_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ner_model_trained_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ner_model_f1: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="uploaded")
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
@@ -49,6 +58,9 @@ class UploadSession(Base):
     __tablename__ = "upload_sessions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="SET NULL"), nullable=True
+    )
     tenant_id: Mapped[int] = mapped_column(Integer, nullable=False)
     user_id: Mapped[str] = mapped_column(String(128), nullable=False)
     filename: Mapped[str] = mapped_column(String(255), nullable=False)
@@ -64,6 +76,35 @@ class UploadSession(Base):
     finalised_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
 
 
+class TenantSetting(Base):
+    __tablename__ = "tenant_settings"
+
+    tenant_id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ner_enabled: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class Batch(Base):
+    __tablename__ = "batches"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    tenant_id: Mapped[int] = mapped_column(Integer, nullable=False)
+    user_id: Mapped[str] = mapped_column(String(128), nullable=False)
+    name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="CREATED")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
 class Job(Base):
     __tablename__ = "jobs"
 
@@ -77,6 +118,11 @@ class Job(Base):
     queue_name: Mapped[str] = mapped_column(String(128), nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+    ner_model_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    ner_model_trained_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    ner_model_f1: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -180,6 +226,48 @@ class Classification(Base):
     )
 
 
+class DocumentMaterialClassification(Base):
+    __tablename__ = "document_material_classifications"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    material_key: Mapped[str] = mapped_column(String(64), nullable=False)
+    taxonomy_category: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    taxonomy_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    packaging_material: Mapped[str] = mapped_column(String(128), nullable=False)
+    packaging_material_subtype: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    packaging_material_weight: Mapped[Decimal | None] = mapped_column(Numeric(12, 3), nullable=True)
+    weight_display_unit: Mapped[str | None] = mapped_column(String(16), nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Numeric(5, 4), nullable=True)
+    source: Mapped[str] = mapped_column(String(32), nullable=False, default="auto")
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow
+    )
+
+
+class BatchDocument(Base):
+    __tablename__ = "batch_documents"
+    __table_args__ = (
+        UniqueConstraint("batch_id", "document_id", name="uq_batch_documents_batch_document"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    batch_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="CASCADE"), nullable=False
+    )
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+
 class ReviewTask(Base):
     __tablename__ = "review_tasks"
 
@@ -195,6 +283,27 @@ class ReviewTask(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     assigned_to: Mapped[str | None] = mapped_column(String(128), nullable=True)
     resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, default=datetime.utcnow
+    )
+
+
+class TrainingSample(Base):
+    __tablename__ = "training_samples"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    document_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    )
+    page_number: Mapped[int] = mapped_column(Integer, nullable=False)
+    ocr_text: Mapped[str] = mapped_column(Text, nullable=False)
+    span_start: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    span_end: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    corrected_value: Mapped[str] = mapped_column(Text, nullable=False)
+    field_name: Mapped[str] = mapped_column(String(64), nullable=False)
+    source: Mapped[str] = mapped_column(String(64), nullable=False, default="field_correction")
+    taxonomy_code: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    reviewer: Mapped[str] = mapped_column(String(128), nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )
@@ -217,13 +326,17 @@ class Report(Base):
     __tablename__ = "reports"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    document_id: Mapped[uuid.UUID] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False
+    document_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=True
+    )
+    batch_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("batches.id", ondelete="CASCADE"), nullable=True
     )
     submission_period: Mapped[str | None] = mapped_column(String(16), nullable=True)
     output_path: Mapped[str | None] = mapped_column(String(512), nullable=True)
     status: Mapped[str] = mapped_column(String(32), nullable=False, default="pending")
     row_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    validation_warnings: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, default=datetime.utcnow
     )

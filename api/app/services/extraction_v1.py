@@ -1,9 +1,14 @@
 from __future__ import annotations
 
+import logging
 import re
 from dataclasses import dataclass
 from datetime import datetime
+from pathlib import Path
+from typing import Any
 
+from ..config import settings
+from .ner_registry import NERModelRegistryEntry, resolve_enabled_ner_model
 from .ner_stub import NERExtractor, StubNERExtractor
 from .ocr import OCRItem
 
@@ -17,6 +22,7 @@ DATE_VALUE = (
     r"[0-9]{1,2}[./-][0-9]{1,2}[./-][0-9]{2,4}"
     r"|[0-9]{4}-[0-9]{2}-[0-9]{2}"
     r"|[0-9]{1,2}\s+[A-Za-z]{3,9}\s+[0-9]{2,4}"
+    r"|[A-Za-z]{3,9}\s+[0-9]{1,2},?\s+[0-9]{2,4}"
 )
 INVOICE_DATE_PATTERNS = [
     re.compile(rf"\binvoice\s*date\s*[:#-]?\s*({DATE_VALUE})", re.IGNORECASE),
@@ -55,6 +61,18 @@ AMBIGUOUS_FIELDS = [
     "weight_unit",
 ]
 
+NER_LABEL_TO_FIELD = {
+    "SUPPLIER_REF": "supplier_ref",
+    "SUPPLIER_NAME": "supplier_name",
+    "INVOICE_REF": "invoice_ref",
+    "INVOICE_DATE": "invoice_date",
+    "WEIGHT_VALUE": "weight_value",
+    "WEIGHT_UNIT": "weight_unit",
+    "PACKAGING_FORMAT": "packaging_format",
+    "MATERIAL_HINT": "material_hint",
+    "PRODUCT_DESC": "product_desc",
+}
+
 
 @dataclass
 class LineContext:
@@ -87,8 +105,28 @@ class ExtractionResult:
 
 
 class ExtractionV1Service:
-    def __init__(self, *, ner_extractor: NERExtractor | None = None) -> None:
-        self.ner_extractor = ner_extractor or StubNERExtractor()
+    def __init__(
+        self,
+        *,
+        ner_extractor: NERExtractor | None = None,
+        tenant_ner_enabled: bool = True,
+    ) -> None:
+        self.logger = logging.getLogger("packtrack.extraction")
+        self.ner_model_registry: NERModelRegistryEntry | None = None
+        self.tenant_ner_enabled = tenant_ner_enabled
+        self.ner_extractor = ner_extractor or self._build_default_ner_extractor()
+
+    @property
+    def ner_provenance(self) -> dict[str, Any] | None:
+        if self.ner_model_registry is None:
+            return None
+        return {
+            "model_path": self.ner_model_registry.model_path,
+            "trained_at": self.ner_model_registry.trained_at.isoformat(),
+            "overall_f1": self.ner_model_registry.overall_f1,
+            "per_label_f1": self.ner_model_registry.per_label_f1,
+            "labels": self.ner_model_registry.labels,
+        }
 
     def extract_from_page(
         self,
@@ -97,8 +135,7 @@ class ExtractionV1Service:
         page_text: str,
         ocr_items: list[OCRItem],
     ) -> ExtractionResult:
-        # NER interface is intentionally stubbed for future model integration.
-        _ = self.ner_extractor.extract(page_text)
+        ner_predictions = self.ner_extractor.extract(page_text)
 
         line_contexts = self._build_line_contexts(
             page_number=page_number,
@@ -119,8 +156,39 @@ class ExtractionV1Service:
         candidates.extend(self._extract_dates(line_contexts))
         candidates.extend(self._extract_product_descriptions(line_contexts))
         candidates.extend(self._extract_weights(line_contexts))
+        candidates.extend(
+            self._extract_from_ner_predictions(
+                page_number=page_number,
+                page_text=page_text,
+                predictions=ner_predictions,
+            )
+        )
 
         return ExtractionResult(candidates=candidates)
+
+    def _build_default_ner_extractor(self) -> NERExtractor:
+        if not settings.ner_enabled or not self.tenant_ner_enabled:
+            return StubNERExtractor()
+
+        registry = resolve_enabled_ner_model(
+            enabled=settings.ner_enabled,
+            registry_path=settings.ner_registry_path,
+            min_overall_f1=settings.ner_min_overall_f1,
+            min_invoice_ref_f1=settings.ner_min_invoice_ref_f1,
+        )
+        if registry is None:
+            return StubNERExtractor()
+        self.ner_model_registry = registry
+
+        model_path = Path(registry.model_path)
+        if not model_path.exists():
+            raise FileNotFoundError(f"spaCy NER model path not found: {model_path}")
+        try:
+            from .ner_spacy import SpacyNERExtractor
+
+            return SpacyNERExtractor(model_path=str(model_path))
+        except Exception as exc:
+            raise RuntimeError(f"Failed to load spaCy NER model at {model_path}: {exc}") from exc
 
     def build_review_findings(
         self, *, candidates: list[ExtractedCandidate]
@@ -310,6 +378,67 @@ class ExtractionV1Service:
                 )
         return candidates
 
+    def _extract_from_ner_predictions(
+        self,
+        *,
+        page_number: int,
+        page_text: str,
+        predictions,
+    ) -> list[ExtractedCandidate]:
+        candidates: list[ExtractedCandidate] = []
+        for prediction in predictions:
+            field_name = NER_LABEL_TO_FIELD.get(prediction.label)
+            if field_name is None:
+                continue
+            if prediction.start_offset < 0 or prediction.end_offset > len(page_text):
+                continue
+            if prediction.start_offset >= prediction.end_offset:
+                continue
+
+            raw_value = prediction.text.strip()
+            if not raw_value:
+                continue
+
+            normalized_value: str | None = raw_value
+            if field_name == "invoice_date":
+                normalized_value = normalize_date_to_iso(raw_value) or raw_value
+            elif field_name == "weight_unit":
+                normalized_value = "kg"
+
+            candidates.append(
+                ExtractedCandidate(
+                    field_name=field_name,
+                    raw_value=raw_value,
+                    normalized_value=normalized_value,
+                    confidence=prediction.confidence,
+                    source_page_number=page_number,
+                    source_block_number=None,
+                    source_line_number=None,
+                    start_offset=prediction.start_offset,
+                    end_offset=prediction.end_offset,
+                    provenance={
+                        "method": "spacy_ner",
+                        "label": prediction.label,
+                        "model_path": (
+                            self.ner_model_registry.model_path
+                            if self.ner_model_registry is not None
+                            else settings.ner_model_path
+                        ),
+                        "model_trained_at": (
+                            self.ner_model_registry.trained_at.isoformat()
+                            if self.ner_model_registry is not None
+                            else None
+                        ),
+                        "model_overall_f1": (
+                            self.ner_model_registry.overall_f1
+                            if self.ner_model_registry is not None
+                            else None
+                        ),
+                    },
+                )
+            )
+        return candidates
+
     def _build_line_contexts(
         self,
         *,
@@ -392,6 +521,14 @@ def normalize_date_to_iso(raw_value: str) -> str | None:
         "%d %B %Y",
         "%d %b %y",
         "%d %B %y",
+        "%b %d, %Y",
+        "%B %d, %Y",
+        "%b %d, %y",
+        "%B %d, %y",
+        "%b %d %Y",
+        "%B %d %Y",
+        "%b %d %y",
+        "%B %d %y",
     ]
 
     for fmt in formats:
@@ -414,4 +551,6 @@ def normalize_weight_to_kg(raw_value: str, raw_unit: str) -> float | None:
         return numeric
     if unit == "g":
         return numeric / 1000.0
+    if unit in {"t", "tonne", "tonnes"}:
+        return numeric * 1000.0
     return None

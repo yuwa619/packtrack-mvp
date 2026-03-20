@@ -1,0 +1,96 @@
+{
+  "fixtures": [
+    {
+      "pdf_file": "invoice_table_top_left.pdf",
+      "layout": "table",
+      "pdf_sha256": "30deee5514bd87d9ac63776bf51a23a82a7e9ffbe2ece6b9e50a23f398f8b79a",
+      "fallback_image_file": "invoice_table_top_left.png",
+      "expected_extracted_fields": {
+        "invoice_ref": "INVPET1001",
+        "invoice_date": "2026-03-01",
+        "supplier_name": "North PET Packaging Ltd",
+        "stable_ocr_token": "North",
+        "required_fields": [
+          "invoice_ref",
+          "invoice_date",
+          "supplier_name",
+          "product_desc",
+          "weight_value",
+          "weight_unit"
+        ]
+      },
+      "expected_taxonomy_codes": [
+        "Plastic"
+      ]
+    },
+    {
+      "pdf_file": "invoice_right_header_glass.pdf",
+      "layout": "right_header",
+      "pdf_sha256": "c5907527bf4281a1223a815771834cd0b7864b94d1e07fdb39cde8521fa1377b",
+      "fallback_image_file": "invoice_right_header_glass.png",
+      "expected_extracted_fields": {
+        "invoice_ref": "GL2042",
+        "invoice_date": "2026-03-02",
+        "supplier_name": "Glassworks UK Ltd",
+        "stable_ocr_token": "Glassworks",
+        "required_fields": [
+          "invoice_ref",
+          "invoice_date",
+          "supplier_name",
+          "product_desc",
+          "weight_value",
+          "weight_unit"
+        ]
+      },
+      "expected_taxonomy_codes": [
+        "Glass"
+      ]
+    },
+    {
+      "pdf_file": "invoice_lines_aluminium.pdf",
+      "layout": "lines",
+      "pdf_sha256": "ccb338bdd5f263008c64f3f4d3440d22195d96b6a5c322b43a2237d397f98a4d",
+      "fallback_image_file": "invoice_lines_aluminium.png",
+      "expected_extracted_fields": {
+        "invoice_ref": "ALU7788",
+        "invoice_date": "2026-03-03",
+        "supplier_name": "AluCan Imports",
+        "stable_ocr_token": "AluCan",
+        "required_fields": [
+          "invoice_ref",
+          "invoice_date",
+          "supplier_name",
+          "product_desc",
+          "weight_value",
+          "weight_unit"
+        ]
+      },
+      "expected_taxonomy_codes": [
+        "Aluminium"
+      ]
+    },
+    {
+      "pdf_file": "invoice_two_column_cardboard.pdf",
+      "layout": "two_column",
+      "pdf_sha256": "ecb5f2627ddf2c87d5e480b7fc3464ff9330a3404f0ecace82ecf5766dab47d6",
+      "fallback_image_file": "invoice_two_column_cardboard.png",
+      "expected_extracted_fields": {
+        "invoice_ref": "CB5501",
+        "invoice_date": "2026-03-04",
+        "supplier_name": "Fibre Cardboard Co",
+        "stable_ocr_token": "Fibre",
+        "required_fields": [
+          "invoice_ref",
+          "invoice_date",
+          "supplier_name",
+          "product_desc",
+          "weight_value",
+          "weight_unit"
+        ]
+      },
+      "expected_taxonomy_codes": [
+        "Paper or cardboard"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,17 @@
+<View>
+  <Text name="text" value="$text"/>
+  <Labels name="ner_labels" toName="text">
+    <Label value="SUPPLIER_REF"/>
+    <Label value="SUPPLIER_NAME"/>
+    <Label value="INVOICE_REF"/>
+    <Label value="INVOICE_DATE"/>
+    <Label value="WEIGHT_VALUE"/>
+    <Label value="WEIGHT_UNIT"/>
+    <Label value="MATERIAL_HINT"/>
+    <Label value="PRODUCT_DESC"/>
+  </Labels>
+  <Choices name="taxonomy_code" toName="text" choice="single-radio" showInline="false">
+    <Choice value="2024-P1"/>
+    <Choice value="UNKNOWN_CODE"/>
+  </Choices>
+</View>

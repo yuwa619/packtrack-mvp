@@ -1,0 +1,34 @@
+{
+  "labels": [
+    "INVOICE_DATE",
+    "INVOICE_REF",
+    "MATERIAL_HINT",
+    "PRODUCT_DESC",
+    "SUPPLIER_NAME",
+    "WEIGHT_UNIT",
+    "WEIGHT_VALUE"
+  ],
+  "label_counts": {
+    "INVOICE_DATE": 36,
+    "INVOICE_REF": 36,
+    "MATERIAL_HINT": 36,
+    "PRODUCT_DESC": 36,
+    "SUPPLIER_NAME": 36,
+    "WEIGHT_UNIT": 72,
+    "WEIGHT_VALUE": 72
+  },
+  "summary": {
+    "total_tasks": 48,
+    "annotated_tasks": 48,
+    "tasks_with_entities": 36,
+    "kept_spans": 324,
+    "kept_spans_pre_docbin": 36,
+    "train_docs": 29,
+    "dev_docs": 7,
+    "prepared_docs": 36,
+    "unique_text_docs": 1,
+    "repaired_spans": 4,
+    "dropped_spans_by_reason": {},
+    "source_export": "docs/labelstudio/checkpoints/sprint-003-20260305T123245Z/sample_export.json"
+  }
+}

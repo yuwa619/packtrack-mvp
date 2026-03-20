@@ -6,7 +6,7 @@ PYTEST_TMP := /tmp/packtrack-test-venv/bin/pytest
 TEST_TIMEOUT ?= 180
 FORMAT_TARGETS := api worker tests
 
-.PHONY: up down build rebuild logs logs-api logs-worker migrate seed format format-changed format-file test health frontend-build backup-postgres restore-postgres backup-minio restore-minio
+.PHONY: up down build rebuild logs logs-api logs-worker migrate seed format format-changed format-file test test-integration test-all test-slow health frontend-build backup-postgres restore-postgres backup-minio restore-minio
 
 up:
 	$(COMPOSE) up -d
@@ -79,17 +79,40 @@ lint:
 	if [ -n "$$ruff_cmd" ]; then "$$ruff_cmd" check api worker tests; else ruff check api worker tests; fi
 
 test:
-	@timeout_cmd=""; \
-	if command -v timeout >/dev/null 2>&1; then timeout_cmd="timeout $(TEST_TIMEOUT)s"; \
-	elif command -v gtimeout >/dev/null 2>&1; then timeout_cmd="gtimeout $(TEST_TIMEOUT)s"; \
-	fi; \
-	if [ -x "$(PYTEST_TMP)" ]; then runner="$(PYTEST_TMP)"; \
+	@if [ -x "$(PYTEST_TMP)" ]; then runner="$(PYTEST_TMP)"; \
 	elif [ -x "$(PYTEST)" ]; then runner="$(PYTEST)"; \
 	elif command -v pytest >/dev/null 2>&1; then runner="pytest"; \
 	else echo "pytest not found"; exit 1; \
 	fi; \
-	echo "Running $$runner -q"; \
-	if [ -n "$$timeout_cmd" ]; then $$timeout_cmd $$runner -q; else $$runner -q; fi
+	echo "Running $$runner -q -m \"not slow\""; \
+	$$runner -q -m "not slow"
+
+test-integration:
+	@if [ -x "$(PYTEST_TMP)" ]; then runner="$(PYTEST_TMP)"; \
+	elif [ -x "$(PYTEST)" ]; then runner="$(PYTEST)"; \
+	elif command -v pytest >/dev/null 2>&1; then runner="pytest"; \
+	else echo "pytest not found"; exit 1; \
+	fi; \
+	echo "Running $$runner -q -m integration (core product-flow tests)"; \
+	$$runner -q -m "integration"
+
+test-all:
+	@if [ -x "$(PYTEST_TMP)" ]; then runner="$(PYTEST_TMP)"; \
+	elif [ -x "$(PYTEST)" ]; then runner="$(PYTEST)"; \
+	elif command -v pytest >/dev/null 2>&1; then runner="pytest"; \
+	else echo "pytest not found"; exit 1; \
+	fi; \
+	echo "Running $$runner -q (all tests including slow)"; \
+	$$runner -q
+
+test-slow:
+	@if [ -x "$(PYTEST_TMP)" ]; then runner="$(PYTEST_TMP)"; \
+	elif [ -x "$(PYTEST)" ]; then runner="$(PYTEST)"; \
+	elif command -v pytest >/dev/null 2>&1; then runner="pytest"; \
+	else echo "pytest not found"; exit 1; \
+	fi; \
+	echo "Running $$runner -q -m slow"; \
+	$$runner -q -m "slow"
 
 health:
 	curl -fsS http://localhost:8000/api/v1/health && echo

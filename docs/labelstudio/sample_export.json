@@ -1,0 +1,828 @@
+[
+  {
+    "id": 1,
+    "annotations": [
+      {
+        "id": 1,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-1",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 31,
+              "end": 39,
+              "text": "oice Ref",
+              "labels": [
+                "INVOICE_REF"
+              ]
+            }
+          },
+          {
+            "id": "code-1",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:15.758409Z",
+        "updated_at": "2026-03-05T11:53:15.758422Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "391c6f76-6b1c-491c-853f-9668c4c5edec",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 1,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "invoice_ref",
+      "corrected_value": "INV-1001",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612282+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 31,
+      "span_end": 39
+    },
+    "created_at": "2026-03-05T11:53:15.511023Z",
+    "updated_at": "2026-03-05T11:53:15.802419Z",
+    "allow_skip": true,
+    "inner_id": 1,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 2,
+    "annotations": [
+      {
+        "id": 2,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-2",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 9,
+              "end": 27,
+              "text": "Acme Packaging Ltd",
+              "labels": [
+                "SUPPLIER_NAME"
+              ]
+            }
+          },
+          {
+            "id": "code-2",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:15.863419Z",
+        "updated_at": "2026-03-05T11:53:15.863430Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "ec4e03c9-f28f-4f72-9e26-98af09e33bb8",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 2,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "supplier_name",
+      "corrected_value": "Acme Packaging Ltd",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612286+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 9,
+      "span_end": 27
+    },
+    "created_at": "2026-03-05T11:53:15.511230Z",
+    "updated_at": "2026-03-05T11:53:15.922532Z",
+    "allow_skip": true,
+    "inner_id": 2,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 3,
+    "annotations": [
+      {
+        "id": 3,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-3",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 53,
+              "end": 63,
+              "text": "ice Date 2",
+              "labels": [
+                "INVOICE_DATE"
+              ]
+            }
+          },
+          {
+            "id": "code-3",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:15.990957Z",
+        "updated_at": "2026-03-05T11:53:15.990978Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "bd97ea8f-caa5-4fa8-9aef-0a1f3db9f4d6",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 3,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "invoice_date",
+      "corrected_value": "2025-01-15",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612288+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 53,
+      "span_end": 63
+    },
+    "created_at": "2026-03-05T11:53:15.511286Z",
+    "updated_at": "2026-03-05T11:53:16.279336Z",
+    "allow_skip": true,
+    "inner_id": 3,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 4,
+    "annotations": [
+      {
+        "id": 4,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-4",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 90,
+              "end": 93,
+              "text": "s 1",
+              "labels": [
+                "WEIGHT_VALUE"
+              ]
+            }
+          },
+          {
+            "id": "code-4",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.443781Z",
+        "updated_at": "2026-03-05T11:53:16.443805Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "bbf55b4d-4680-4032-926f-21c3ea75dc45",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 4,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "weight_value",
+      "corrected_value": "1.2",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612290+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 90,
+      "span_end": 93
+    },
+    "created_at": "2026-03-05T11:53:15.511323Z",
+    "updated_at": "2026-03-05T11:53:16.511222Z",
+    "allow_skip": true,
+    "inner_id": 4,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 5,
+    "annotations": [
+      {
+        "id": 5,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-5",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 94,
+              "end": 96,
+              "text": "2 ",
+              "labels": [
+                "WEIGHT_UNIT"
+              ]
+            }
+          },
+          {
+            "id": "code-5",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.563665Z",
+        "updated_at": "2026-03-05T11:53:16.563676Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "4328e286-de1e-48af-96b0-5dbc8369f932",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 5,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "weight_unit",
+      "corrected_value": "kg",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612292+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 94,
+      "span_end": 96
+    },
+    "created_at": "2026-03-05T11:53:15.511419Z",
+    "updated_at": "2026-03-05T11:53:16.593748Z",
+    "allow_skip": true,
+    "inner_id": 5,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 6,
+    "annotations": [
+      {
+        "id": 6,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-6",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 77,
+              "end": 88,
+              "text": " 1 PET bott",
+              "labels": [
+                "PRODUCT_DESC"
+              ]
+            }
+          },
+          {
+            "id": "code-6",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.646427Z",
+        "updated_at": "2026-03-05T11:53:16.646444Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "eba825f2-123b-4caa-bb15-a6b2c6f3437f",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 6,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "product_desc",
+      "corrected_value": "PET bottles",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612293+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 77,
+      "span_end": 88
+    },
+    "created_at": "2026-03-05T11:53:15.511461Z",
+    "updated_at": "2026-03-05T11:53:16.695343Z",
+    "allow_skip": true,
+    "inner_id": 6,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 7,
+    "annotations": [
+      {
+        "id": 7,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-7",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 124,
+              "end": 133,
+              "text": "500 g\nMat",
+              "labels": [
+                "MATERIAL_HINT"
+              ]
+            }
+          },
+          {
+            "id": "code-7",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.725725Z",
+        "updated_at": "2026-03-05T11:53:16.725743Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "401d601c-21e5-4b64-8fb9-8b357ba0abd1",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 7,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "material_hint",
+      "corrected_value": "cardboard",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612295+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 124,
+      "span_end": 133
+    },
+    "created_at": "2026-03-05T11:53:15.511759Z",
+    "updated_at": "2026-03-05T11:53:16.753426Z",
+    "allow_skip": true,
+    "inner_id": 7,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 8,
+    "annotations": [
+      {
+        "id": 8,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "code-8",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.807705Z",
+        "updated_at": "2026-03-05T11:53:16.807719Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 1,
+        "unique_id": "6168e6c7-0b9a-4757-90f3-3262008f6985",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 8,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "supplier_ref",
+      "corrected_value": "SUP-ACME",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612296+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": null,
+      "span_end": null
+    },
+    "created_at": "2026-03-05T11:53:15.511799Z",
+    "updated_at": "2026-03-05T11:53:16.835340Z",
+    "allow_skip": true,
+    "inner_id": 8,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 9,
+    "annotations": [
+      {
+        "id": 9,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-9",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 121,
+              "end": 124,
+              "text": "es ",
+              "labels": [
+                "WEIGHT_VALUE"
+              ]
+            }
+          },
+          {
+            "id": "code-9",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.879229Z",
+        "updated_at": "2026-03-05T11:53:16.879243Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "7f7677d8-4223-4024-973f-d7b94a218f79",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 9,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "weight_value",
+      "corrected_value": "500",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612298+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 121,
+      "span_end": 124
+    },
+    "created_at": "2026-03-05T11:53:15.511832Z",
+    "updated_at": "2026-03-05T11:53:16.912963Z",
+    "allow_skip": true,
+    "inner_id": 9,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  },
+  {
+    "id": 10,
+    "annotations": [
+      {
+        "id": 10,
+        "completed_by": 1,
+        "result": [
+          {
+            "id": "span-10",
+            "from_name": "ner_labels",
+            "to_name": "text",
+            "type": "labels",
+            "value": {
+              "start": 125,
+              "end": 126,
+              "text": "0",
+              "labels": [
+                "WEIGHT_UNIT"
+              ]
+            }
+          },
+          {
+            "id": "code-10",
+            "from_name": "taxonomy_code",
+            "to_name": "text",
+            "type": "choices",
+            "value": {
+              "choices": [
+                "2024-P1"
+              ]
+            }
+          }
+        ],
+        "was_cancelled": false,
+        "ground_truth": false,
+        "created_at": "2026-03-05T11:53:16.940412Z",
+        "updated_at": "2026-03-05T11:53:16.940421Z",
+        "draft_created_at": null,
+        "lead_time": null,
+        "prediction": {},
+        "result_count": 2,
+        "unique_id": "21afe835-2c2b-49fc-87c7-5b143558d684",
+        "import_id": null,
+        "last_action": null,
+        "bulk_created": false,
+        "task": 10,
+        "project": 1,
+        "updated_by": 1,
+        "parent_prediction": null,
+        "parent_annotation": null,
+        "last_created_by": null
+      }
+    ],
+    "drafts": [],
+    "predictions": [],
+    "data": {
+      "text": "Supplier Acme Packaging Ltd\nInvoice Ref INV-1001\nInvoice Date 2025-01-15\nLine 1 PET bottles 1.2 kg\nLine 2 Cardboard sleeves 500 g\nMaterial hints PET cardboard glass aluminium\n"
+    },
+    "meta": {
+      "field_name": "weight_unit",
+      "corrected_value": "g",
+      "document_id": "6238c623-be07-4545-a849-1bf0be8af155",
+      "page_number": 1,
+      "reviewer": "labeler",
+      "created_at": "2026-03-05T11:41:07.612299+00:00",
+      "source": "field_correction",
+      "taxonomy_code": null,
+      "span_start": 125,
+      "span_end": 126
+    },
+    "created_at": "2026-03-05T11:53:15.511867Z",
+    "updated_at": "2026-03-05T11:53:16.964889Z",
+    "allow_skip": true,
+    "inner_id": 10,
+    "total_annotations": 1,
+    "cancelled_annotations": 0,
+    "total_predictions": 0,
+    "comment_count": 0,
+    "unresolved_comment_count": 0,
+    "last_comment_updated_at": null,
+    "project": 1,
+    "updated_by": 1,
+    "comment_authors": []
+  }
+]

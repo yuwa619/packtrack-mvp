@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, TypeVar
@@ -11,9 +12,11 @@ from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from ..config import settings
+from ..constants import DocumentStatus, MaterialSource, ReportStatus, ReviewStatus, ReviewTaskType
 from ..db.models import (
     Classification,
     Document,
+    DocumentMaterialClassification,
     Entity,
     ExtractedEntity,
     Job,
@@ -23,13 +26,19 @@ from ..db.models import (
 )
 from .audit import add_audit_event
 from .classification_v1 import ClassificationServiceV1
-from .extraction_v1 import ExtractionV1Service
+from .document_insights import (
+    DOCUMENT_TYPE_NOTICE_OF_LIABILITY,
+    DocumentInsightsService,
+)
+from .extraction_v1 import ExtractionV1Service, normalize_weight_to_kg
 from .logging_utils import log_json
+from .material_detection import detect_materials
 from .ocr import OCRService
 from .pipeline_state import validate_transition
 from .preprocess import PreprocessService
 from .report_export import render_report_csv
 from .storage import ObjectStorage
+from .tenant_settings import is_tenant_ner_enabled
 
 T = TypeVar("T")
 
@@ -61,6 +70,24 @@ class StageExecutionError(RuntimeError):
 
 
 class PipelineRunner:
+    _OCR_REVIEW_STOPWORDS = {"invoice", "bill", "to", "date"}
+    _REQUIRED_FIELD_LINE_HINTS = (
+        "invoice ref",
+        "invoice no",
+        "invoice number",
+        "invoice date",
+        "bill to",
+        "supplier",
+        "product",
+        "description",
+        "weight",
+        "qty",
+        "quantity",
+        "ref",
+    )
+    _PUNCTUATION_ONLY_RE = re.compile(r"^[\W_]+$", re.UNICODE)
+    _NUMERIC_TOKEN_RE = re.compile(r"^\d+(?:[.,]\d+)?$")
+
     def __init__(self, *, session: Session, storage: ObjectStorage) -> None:
         self.session = session
         self.storage = storage
@@ -125,7 +152,7 @@ class PipelineRunner:
             )
         except Exception as exc:
             failed_reason = str(exc)
-            document.status = "FAILED"
+            document.status = DocumentStatus.FAILED
             self.session.add(document)
             self._sync_job_state(document=document, state="FAILED", error_message=failed_reason)
             self._audit(document, "PIPELINE_RUN_FAILED", {"error": failed_reason})
@@ -227,7 +254,7 @@ class PipelineRunner:
             )
         except Exception as exc:
             failed_reason = str(exc)
-            document.status = "FAILED"
+            document.status = DocumentStatus.FAILED
             self.session.add(document)
             self._sync_job_state(document=document, state="FAILED", error_message=failed_reason)
             self._audit(
@@ -466,19 +493,57 @@ class PipelineRunner:
             delete(ExtractedEntity).where(ExtractedEntity.document_id == document.id)
         )
         self.session.execute(
+            delete(DocumentMaterialClassification).where(
+                DocumentMaterialClassification.document_id == document.id,
+                DocumentMaterialClassification.source == "auto",
+            )
+        )
+        self.session.execute(
             delete(ReviewTask).where(
                 ReviewTask.document_id == document.id,
                 ReviewTask.task_type.in_(["OCR_REVIEW", "EXTRACTION_REVIEW"]),
-                ReviewTask.status == "pending",
+                ReviewTask.status == ReviewStatus.PENDING,
             )
         )
         self.session.flush()
 
         ocr_service = OCRService(storage=self.storage)
-        extraction_service = ExtractionV1Service()
+        tenant_ner_enabled = False
+        if document.organisation_id is not None:
+            tenant_ner_enabled = is_tenant_ner_enabled(
+                session=self.session,
+                tenant_id=document.organisation_id,
+            )
+        extraction_service = ExtractionV1Service(tenant_ner_enabled=tenant_ner_enabled)
+        if extraction_service.ner_model_registry is not None:
+            registry = extraction_service.ner_model_registry
+            document.ner_model_path = registry.model_path
+            document.ner_model_trained_at = registry.trained_at
+            document.ner_model_f1 = registry.overall_f1
+            self.session.add(document)
+
+            job = self._get_latest_job(document=document)
+            if job is not None:
+                job.ner_model_path = registry.model_path
+                job.ner_model_trained_at = registry.trained_at
+                job.ner_model_f1 = registry.overall_f1
+                self.session.add(job)
+
+            self._audit(
+                document,
+                "NER_MODEL_USED",
+                {
+                    "model_path": registry.model_path,
+                    "trained_at": registry.trained_at.isoformat(),
+                    "overall_f1": registry.overall_f1,
+                    "per_label_f1": registry.per_label_f1,
+                    "labels": registry.labels,
+                },
+            )
         all_items: list[dict[str, Any]] = []
         page_summaries: list[dict[str, Any]] = []
         extracted_candidates = []
+        page_texts: list[str] = []
 
         for page in pages:
             image_uri = page.normalised_image_path or page.image_path
@@ -492,8 +557,14 @@ class PipelineRunner:
             )
             page.ocr_text = page_result.raw_text
             self.session.add(page)
+            page_texts.append(page_result.raw_text)
 
-            low_confidence_items = 0
+            line_text_by_location = {
+                (item.block_number, item.line_number): item.text
+                for item in page_result.items
+                if item.item_type == "line"
+            }
+            low_confidence_tokens = []
             for item in page_result.items:
                 label = {
                     "block": "OCR_BLOCK",
@@ -519,32 +590,42 @@ class PipelineRunner:
                 all_items.append({"label": label, "text": item.text, "confidence": item.confidence})
 
                 if (
-                    item.item_type in {"token", "block"}
+                    item.item_type == "token"
                     and item.confidence < settings.ocr_confidence_threshold
+                    and not self._is_noise_low_conf_token(
+                        token_text=item.text,
+                        line_text=line_text_by_location.get(
+                            (item.block_number, item.line_number),
+                            "",
+                        ),
+                    )
                 ):
-                    low_confidence_items += 1
-                    task = ReviewTask(
+                    low_confidence_tokens.append(item)
+
+            if low_confidence_tokens:
+                ocr_review_summary = self._build_ocr_review_summary(
+                    page_number=page.page_number,
+                    threshold=settings.ocr_confidence_threshold,
+                    tokens=low_confidence_tokens,
+                    artifact_uri=page_result.artifact_tsv_uri,
+                )
+                self.session.add(
+                    ReviewTask(
                         document_id=document.id,
                         classification_id=None,
                         task_type="OCR_REVIEW",
-                        status="pending",
-                        notes=(
-                            f"Low confidence {item.item_type} '{item.text}' "
-                            f"({item.confidence:.3f} < {settings.ocr_confidence_threshold:.2f})"
-                        ),
+                        status=ReviewStatus.PENDING,
+                        notes=json.dumps(ocr_review_summary, ensure_ascii=True),
                     )
-                    self.session.add(task)
-                    self._audit(
-                        document,
-                        "REVIEW_TASK_CREATED",
-                        {
-                            "task_type": "OCR_REVIEW",
-                            "item_type": item.item_type,
-                            "confidence": item.confidence,
-                            "text": item.text,
-                            "page_number": item.page_number,
-                        },
-                    )
+                )
+                self._audit(
+                    document,
+                    "REVIEW_TASK_CREATED",
+                    {
+                        "task_type": "OCR_REVIEW",
+                        **ocr_review_summary,
+                    },
+                )
 
             extraction_result = extraction_service.extract_from_page(
                 page_number=page.page_number,
@@ -576,22 +657,199 @@ class PipelineRunner:
                 "tsv_uri": page_result.artifact_tsv_uri,
                 "hocr_uri": page_result.artifact_hocr_uri,
                 "item_count": len(page_result.items),
-                "low_confidence_items": low_confidence_items,
+                "low_confidence_items": len(low_confidence_tokens),
                 "extracted_fields": len(extraction_result.candidates),
             }
             page_summaries.append(page_summary)
             self._audit(document, "OCR_PAGE_PROCESSED", page_summary)
 
-        missing_fields, ambiguous_fields = extraction_service.build_review_findings(
-            candidates=extracted_candidates
+        document_insights = DocumentInsightsService().inspect(page_texts=page_texts)
+        document.document_type = document_insights.document_type
+        document.document_date = document_insights.document_date
+        document.inferred_country_code = document_insights.inferred_country_code
+        document.country_inference_source = document_insights.country_inference_source
+        self.session.add(document)
+
+        self._audit(
+            document,
+            "DOCUMENT_METADATA_EXTRACTED",
+            {
+                "document_type": document.document_type,
+                "document_date": document.document_date,
+                "inferred_country_code": document.inferred_country_code,
+                "country_inference_source": document.country_inference_source,
+            },
         )
-        for field_name in missing_fields:
+
+        persisted_materials: list[dict[str, Any]] = []
+        if document_insights.material_rows:
+            for structured_material in document_insights.material_rows:
+                # Canonical weight: always store in kg.
+                weight_kg = None
+                if (
+                    structured_material.weight_value is not None
+                    and structured_material.weight_unit
+                ):
+                    weight_kg = normalize_weight_to_kg(
+                        str(structured_material.weight_value),
+                        structured_material.weight_unit,
+                    )
+                    if weight_kg is None:
+                        weight_kg = float(structured_material.weight_value)
+
+                self.session.add(
+                    DocumentMaterialClassification(
+                        document_id=document.id,
+                        material_key=structured_material.material_key,
+                        taxonomy_category="Material",
+                        taxonomy_code=structured_material.packaging_material,
+                        packaging_material=structured_material.packaging_material,
+                        packaging_material_subtype=structured_material.packaging_material_subtype,
+                        packaging_material_weight=weight_kg,
+                        weight_display_unit="kg" if weight_kg is not None else None,
+                        confidence=structured_material.confidence,
+                        source=structured_material.source,
+                    )
+                )
+                persisted_materials.append(
+                    {
+                        "material_key": structured_material.material_key,
+                        "packaging_material": structured_material.packaging_material,
+                        "packaging_material_subtype": (
+                            structured_material.packaging_material_subtype
+                        ),
+                        "packaging_material_weight": (
+                            None if weight_kg is None else str(weight_kg)
+                        ),
+                        "weight_display_unit": "kg" if weight_kg is not None else None,
+                        "original_unit": structured_material.weight_unit,
+                        "original_value": (
+                            None
+                            if structured_material.weight_value is None
+                            else str(structured_material.weight_value)
+                        ),
+                        "confidence": structured_material.confidence,
+                        "source": structured_material.source,
+                        "provenance": structured_material.provenance,
+                    }
+                )
+        else:
+            auto_materials = detect_materials(
+                page_texts=page_texts,
+                extracted_candidates=extracted_candidates,
+            )
+            for detected_material in auto_materials:
+                self.session.add(
+                    DocumentMaterialClassification(
+                        document_id=document.id,
+                        material_key=detected_material.material_key,
+                        taxonomy_category="Material",
+                        taxonomy_code=detected_material.packaging_material,
+                        packaging_material=detected_material.packaging_material,
+                        packaging_material_subtype=detected_material.packaging_material_subtype,
+                        packaging_material_weight=None,
+                        weight_display_unit=None,
+                        confidence=detected_material.confidence,
+                        source=detected_material.source,
+                    )
+                )
+                persisted_materials.append(
+                    {
+                        "material_key": detected_material.material_key,
+                        "packaging_material": detected_material.packaging_material,
+                        "packaging_material_subtype": detected_material.packaging_material_subtype,
+                        "packaging_material_weight": None,
+                        "weight_display_unit": None,
+                        "confidence": detected_material.confidence,
+                        "source": detected_material.source,
+                        "provenance": {"method": "keyword_rules"},
+                    }
+                )
+
+        if persisted_materials:
+            self._audit(
+                document,
+                "MATERIALS_AUTO_DETECTED",
+                {
+                    "materials": persisted_materials,
+                },
+            )
+
+        weight_value_candidates = [
+            candidate
+            for candidate in extracted_candidates
+            if candidate.field_name == "weight_value"
+        ]
+        weight_unit_candidates = [
+            candidate for candidate in extracted_candidates if candidate.field_name == "weight_unit"
+        ]
+        has_weight_values = bool(weight_value_candidates)
+        has_weight_units = bool(weight_unit_candidates)
+        low_confidence_materials = [
+            item
+            for item in persisted_materials
+            if float(item["confidence"]) < settings.classification_confidence_threshold
+        ]
+        for detected_material in persisted_materials:
+            if (
+                detected_material["packaging_material_weight"]
+                and detected_material["weight_display_unit"]
+            ):
+                continue
+            if not has_weight_values or not has_weight_units:
+                self.session.add(
+                    ReviewTask(
+                        document_id=document.id,
+                        classification_id=None,
+                        task_type=ReviewTaskType.EXTRACTION_REVIEW,
+                        status=ReviewStatus.PENDING,
+                        notes=f"Optional: weight missing for {detected_material['material_key']}",
+                    )
+                )
+        for detected_material in low_confidence_materials:
             self.session.add(
                 ReviewTask(
                     document_id=document.id,
                     classification_id=None,
-                    task_type="EXTRACTION_REVIEW",
-                    status="pending",
+                    task_type=ReviewTaskType.EXTRACTION_REVIEW,
+                    status=ReviewStatus.PENDING,
+                    notes=(
+                        "Optional: low confidence material detection for "
+                        f"{detected_material['material_key']} "
+                        f"({float(detected_material['confidence']):.2f})"
+                    ),
+                )
+            )
+
+        missing_fields, ambiguous_fields = extraction_service.build_review_findings(
+            candidates=extracted_candidates
+        )
+        if document_insights.document_date and "invoice_date" in missing_fields:
+            missing_fields = [field for field in missing_fields if field != "invoice_date"]
+        if document_insights.document_type == DOCUMENT_TYPE_NOTICE_OF_LIABILITY:
+            suppressed_notice_fields = {
+                "invoice_ref",
+                "invoice_date",
+                "supplier_ref_or_name",
+                "product_desc",
+                "weight_value",
+                "weight_unit",
+            }
+            missing_fields = [
+                field for field in missing_fields if field not in suppressed_notice_fields
+            ]
+            ambiguous_fields = [
+                field for field in ambiguous_fields if field not in suppressed_notice_fields
+            ]
+        for field_name in missing_fields:
+            if persisted_materials and field_name in {"weight_value", "weight_unit"}:
+                continue
+            self.session.add(
+                ReviewTask(
+                    document_id=document.id,
+                    classification_id=None,
+                    task_type=ReviewTaskType.EXTRACTION_REVIEW,
+                    status=ReviewStatus.PENDING,
                     notes=f"Required extracted field is missing: {field_name}",
                 )
             )
@@ -609,8 +867,8 @@ class PipelineRunner:
                 ReviewTask(
                     document_id=document.id,
                     classification_id=None,
-                    task_type="EXTRACTION_REVIEW",
-                    status="pending",
+                    task_type=ReviewTaskType.EXTRACTION_REVIEW,
+                    status=ReviewStatus.PENDING,
                     notes=f"Extracted field is ambiguous: {field_name}",
                 )
             )
@@ -632,6 +890,12 @@ class PipelineRunner:
             "pages": page_summaries,
             "entity_count": len(all_items),
             "extracted_entity_count": len(extracted_candidates),
+            "document_type": document.document_type,
+            "document_date": document.document_date,
+            "inferred_country_code": document.inferred_country_code,
+            "document_insight_warnings": document_insights.warnings,
+            "auto_material_count": len(persisted_materials),
+            "materials": persisted_materials,
             "missing_fields": missing_fields,
             "ambiguous_fields": ambiguous_fields,
         }
@@ -656,14 +920,15 @@ class PipelineRunner:
         self.session.execute(
             delete(ReviewTask).where(
                 ReviewTask.document_id == document.id,
-                ReviewTask.task_type == "CLASSIFICATION_REVIEW",
-                ReviewTask.status == "pending",
+                ReviewTask.task_type == ReviewTaskType.CLASSIFICATION_REVIEW,
+                ReviewTask.status == ReviewStatus.PENDING,
             )
         )
         self.session.flush()
         decision = ClassificationServiceV1(session=self.session).classify_document(
             document_id=document.id
         )
+        inferred_country_code = document.inferred_country_code or ""
         classification = Classification(
             document_id=document.id,
             row_index=1,
@@ -675,8 +940,8 @@ class PipelineRunner:
             packaging_class=decision.packaging_class,
             packaging_material=decision.packaging_material,
             packaging_material_subtype=decision.packaging_material_subtype,
-            from_country="",
-            to_country="",
+            from_country=inferred_country_code,
+            to_country=inferred_country_code,
             packaging_material_weight=decision.packaging_material_weight,
             packaging_material_units=None,
             transitional_packaging_units=None,
@@ -694,8 +959,8 @@ class PipelineRunner:
             task = ReviewTask(
                 document_id=document.id,
                 classification_id=classification.id,
-                task_type="CLASSIFICATION_REVIEW",
-                status="pending",
+                task_type=ReviewTaskType.CLASSIFICATION_REVIEW,
+                status=ReviewStatus.PENDING,
                 notes=(
                     f"Classification confidence below threshold ({decision.confidence} < "
                     f"{settings.classification_confidence_threshold})"
@@ -765,7 +1030,7 @@ class PipelineRunner:
                 document_id=document.id,
                 submission_period=document.submission_period,
                 output_path=None,
-                status="pending",
+                status=ReviewStatus.PENDING,
                 row_count=0,
             )
             self.session.add(report)
@@ -773,12 +1038,15 @@ class PipelineRunner:
         else:
             report.submission_period = document.submission_period
             report.output_path = None
-            report.status = "pending"
+            report.status = ReportStatus.PENDING
             report.row_count = 0
             self.session.add(report)
             self.session.flush()
 
-        csv_bytes, row_count = render_report_csv(session=self.session, report_id=report.id)
+        csv_bytes, row_count, warnings = render_report_csv(
+            session=self.session,
+            report_id=report.id,
+        )
         report_key = f"reports/{report.id}.csv"
         report_uri = self.storage.put_bytes(
             bucket=settings.minio_bucket_reports,
@@ -788,10 +1056,22 @@ class PipelineRunner:
         )
 
         report.output_path = report_uri
-        report.status = "generated"
+        report.status = ReportStatus.GENERATED
         report.row_count = row_count
+        report.validation_warnings = warnings
         self.session.add(report)
         self.session.flush()
+
+        warning_count = len(warnings.get("overall", []))
+        self._audit(
+            document,
+            "REPORT_WARNINGS_GENERATED",
+            {
+                "report_id": str(report.id),
+                "warning_count": warning_count,
+                "missing_fields_by_row": warnings.get("missing_fields_by_row", []),
+            },
+        )
 
         self._audit(
             document,
@@ -800,6 +1080,7 @@ class PipelineRunner:
                 "report_id": str(report.id),
                 "row_count": row_count,
                 "output_uri": report_uri,
+                "warning_count": warning_count,
             },
         )
         return report
@@ -946,6 +1227,57 @@ class PipelineRunner:
             .scalars()
             .first()
         )
+
+    @classmethod
+    def _is_required_field_line(cls, line_text: str) -> bool:
+        normalized = " ".join(line_text.lower().split())
+        return any(hint in normalized for hint in cls._REQUIRED_FIELD_LINE_HINTS)
+
+    @classmethod
+    def _is_noise_low_conf_token(cls, *, token_text: str, line_text: str) -> bool:
+        token = token_text.strip()
+        if not token:
+            return True
+        if cls._PUNCTUATION_ONLY_RE.fullmatch(token):
+            return True
+
+        normalized = token.lower()
+        numeric_value = normalized.replace(",", "").replace(".", "")
+        is_numeric = numeric_value.isdigit() and bool(numeric_value)
+        if len(normalized) <= 2 and not is_numeric:
+            return True
+        return normalized in cls._OCR_REVIEW_STOPWORDS and not cls._is_required_field_line(
+            line_text
+        )
+
+    @staticmethod
+    def _build_ocr_review_summary(
+        *,
+        page_number: int,
+        threshold: float,
+        tokens: list[Any],
+        artifact_uri: str,
+    ) -> dict[str, Any]:
+        ranked_tokens = sorted(tokens, key=lambda token: token.confidence)
+        examples = []
+        for token in ranked_tokens:
+            example_text = token.text.strip()
+            if not example_text:
+                continue
+            examples.append(f"{example_text[:48]} ({token.confidence:.3f})")
+            if len(examples) == 10:
+                break
+
+        confidences = [float(token.confidence) for token in ranked_tokens]
+        return {
+            "page_number": page_number,
+            "low_conf_token_count": len(ranked_tokens),
+            "examples": examples,
+            "min_confidence": round(min(confidences), 3),
+            "avg_confidence": round(sum(confidences) / len(confidences), 3),
+            "threshold": round(threshold, 3),
+            "ocr_artifact_uri": artifact_uri,
+        }
 
     def _get_job_id(self, *, document: Document) -> str | None:
         job = self._get_latest_job(document=document)

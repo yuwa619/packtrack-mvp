@@ -1,23 +1,25 @@
 from __future__ import annotations
 
+from ..constants import DocumentStatus
+
 PIPELINE_STATES = {
-    "QUEUED",
-    "PREPROCESSING",
-    "EXTRACTING",
-    "CLASSIFYING",
-    "REPORTING",
-    "COMPLETE",
-    "FAILED",
+    DocumentStatus.QUEUED,
+    DocumentStatus.PREPROCESSING,
+    DocumentStatus.EXTRACTING,
+    DocumentStatus.CLASSIFYING,
+    DocumentStatus.REPORTING,
+    DocumentStatus.COMPLETE,
+    DocumentStatus.FAILED,
 }
 
 VALID_TRANSITIONS = {
-    "QUEUED": {"PREPROCESSING", "FAILED"},
-    "PREPROCESSING": {"EXTRACTING", "FAILED"},
-    "EXTRACTING": {"CLASSIFYING", "FAILED"},
-    "CLASSIFYING": {"REPORTING", "FAILED"},
-    "REPORTING": {"COMPLETE", "FAILED"},
-    "COMPLETE": set(),
-    "FAILED": set(),
+    DocumentStatus.QUEUED: {DocumentStatus.PREPROCESSING, DocumentStatus.FAILED},
+    DocumentStatus.PREPROCESSING: {DocumentStatus.EXTRACTING, DocumentStatus.FAILED},
+    DocumentStatus.EXTRACTING: {DocumentStatus.CLASSIFYING, DocumentStatus.FAILED},
+    DocumentStatus.CLASSIFYING: {DocumentStatus.REPORTING, DocumentStatus.FAILED},
+    DocumentStatus.REPORTING: {DocumentStatus.COMPLETE, DocumentStatus.FAILED},
+    DocumentStatus.COMPLETE: set(),
+    DocumentStatus.FAILED: set(),
 }
 
 

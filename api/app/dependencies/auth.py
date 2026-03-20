@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from typing import Annotated
 
-from fastapi import Header, HTTPException
+from fastapi import Depends, Header, HTTPException
 
 
 @dataclass
@@ -20,3 +21,12 @@ def get_auth_context(
     if x_tenant_id <= 0:
         raise HTTPException(status_code=403, detail="Invalid tenant context")
     return AuthContext(user_id=x_user_id, tenant_id=x_tenant_id)
+
+
+def get_admin_auth_context(
+    auth: Annotated[AuthContext, Depends(get_auth_context)],
+    x_user_role: str | None = Header(default=None, alias="X-User-Role"),
+) -> AuthContext:
+    if (x_user_role or "").strip().lower() != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required")
+    return auth

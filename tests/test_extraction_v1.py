@@ -29,6 +29,9 @@ def test_normalize_weight_to_kg_fixtures() -> None:
     assert normalize_weight_to_kg("2,500", "g") == 2.5
     assert normalize_weight_to_kg("bad", "kg") is None
     assert normalize_weight_to_kg("10", "lb") is None
+    assert normalize_weight_to_kg("0.5", "tonnes") == 500.0
+    assert normalize_weight_to_kg("1", "tonne") == 1000.0
+    assert normalize_weight_to_kg("2.5", "t") == 2500.0
 
 
 def test_extraction_parser_extracts_required_fields_with_provenance() -> None:

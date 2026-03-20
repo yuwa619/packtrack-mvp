@@ -1,0 +1,105 @@
+# Render Blueprint — PackTrack MVP
+# https://render.com/docs/blueprint-spec
+#
+# Deploy: connect this repo in the Render dashboard, or run:
+#   render blueprint launch
+#
+# After first deploy, set the remaining environment variables in the
+# Render dashboard (S3 credentials, CORS_ORIGINS with your Netlify URL).
+
+services:
+  # ── API (web service) ──────────────────────────────────────────────
+  - type: web
+    name: packtrack-api
+    runtime: docker
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: ./api
+    plan: starter
+    healthCheckPath: /api/v1/health
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: DATABASE_URL
+        fromDatabase:
+          name: packtrack-db
+          property: connectionURI
+      - key: REDIS_URL
+        fromService:
+          name: packtrack-redis
+          type: redis
+          property: connectionURI
+      # CORS — set to your Netlify production URL after first deploy.
+      # Comma-separated for multiple origins.
+      - key: CORS_ORIGINS
+        value: https://YOUR_NETLIFY_SITE.netlify.app
+      # ── S3-compatible storage ──
+      # The minio Python client works with any S3-compatible service.
+      # Use AWS S3, Tigris (Render-native), Cloudflare R2, or Backblaze B2.
+      # Set these in the Render dashboard after creating your S3 buckets.
+      - key: MINIO_INTERNAL_ENDPOINT
+        sync: false  # e.g. https://s3.us-east-1.amazonaws.com
+      - key: MINIO_PUBLIC_ENDPOINT
+        sync: false  # e.g. https://s3.us-east-1.amazonaws.com
+      - key: MINIO_ACCESS_KEY
+        sync: false  # AWS access key ID or equivalent
+      - key: MINIO_SECRET_KEY
+        sync: false  # AWS secret access key or equivalent
+      - key: MINIO_SECURE
+        value: "true"
+      - key: MINIO_REGION
+        value: us-east-1
+      - key: MINIO_BUCKET_RAW
+        value: packtrack-raw-uploads
+      - key: MINIO_BUCKET_PREPROCESSED
+        value: packtrack-preprocessed
+      - key: MINIO_BUCKET_REPORTS
+        value: packtrack-reports
+      - key: MINIO_FORCE_LOCAL
+        value: "false"
+      - key: MINIO_ALLOW_LOCAL_FALLBACK
+        value: "false"
+      # ── Processing ──
+      - key: OCR_CONFIDENCE_THRESHOLD
+        value: "0.70"
+      - key: CLASSIFICATION_CONFIDENCE_THRESHOLD
+        value: "0.85"
+      - key: MAX_UPLOAD_SIZE_BYTES
+        value: "52428800"
+      - key: UPLOAD_URL_EXPIRY_SECONDS
+        value: "900"
+      - key: NER_ENABLED
+        value: "false"
+
+  # ── Worker (background service) ────────────────────────────────────
+  - type: worker
+    name: packtrack-worker
+    runtime: docker
+    dockerfilePath: ./worker/Dockerfile
+    dockerContext: ./worker
+    plan: starter
+    envVars:
+      - key: ENVIRONMENT
+        value: production
+      - key: REDIS_URL
+        fromService:
+          name: packtrack-redis
+          type: redis
+          property: connectionURI
+
+databases:
+  - name: packtrack-db
+    plan: starter
+    databaseName: packtrack
+    user: packtrack
+    postgresMajorVersion: "15"
+
+# Render-managed Redis
+# https://render.com/docs/redis
+# Note: Render Redis is created separately via dashboard if not
+# supported in blueprint. If your Render plan supports it:
+  # - name: packtrack-redis
+  #   type: redis
+  #   plan: starter
+  #   maxmemoryPolicy: allkeys-lru
+# Otherwise, create Redis manually in the Render dashboard and
+# set REDIS_URL as a manual environment variable on both services.

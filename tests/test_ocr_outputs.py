@@ -166,7 +166,12 @@ def test_ocr_outputs_persist_and_low_confidence_creates_review_tasks(tmp_path, m
             .scalars()
             .all()
         )
-        assert len(ocr_review_tasks) >= 1
+        assert len(ocr_review_tasks) == 1
+        notes = ocr_review_tasks[0].notes or ""
+        assert "low_conf_token_count" in notes
+        assert "examples" in notes
+        assert "avg_confidence" in notes
+        assert "ocr_artifact_uri" in notes
 
         ocr_page_event = (
             session.execute(

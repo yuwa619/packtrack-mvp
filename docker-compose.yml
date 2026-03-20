@@ -49,10 +49,13 @@ services:
       ENVIRONMENT: ${ENVIRONMENT}
       DATABASE_URL: ${DATABASE_URL}
       REDIS_URL: ${REDIS_URL}
-      MINIO_ENDPOINT: ${MINIO_ENDPOINT}
+      MINIO_INTERNAL_ENDPOINT: ${MINIO_INTERNAL_ENDPOINT:-http://minio:9000}
+      MINIO_PUBLIC_ENDPOINT: ${MINIO_PUBLIC_ENDPOINT:-http://localhost:9000}
+      MINIO_ENDPOINT: ${MINIO_ENDPOINT:-}
       MINIO_ACCESS_KEY: ${MINIO_ACCESS_KEY}
       MINIO_SECRET_KEY: ${MINIO_SECRET_KEY}
       MINIO_SECURE: ${MINIO_SECURE:-false}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
       MINIO_BUCKET_RAW: ${MINIO_BUCKET_RAW}
       MINIO_BUCKET_PREPROCESSED: ${MINIO_BUCKET_PREPROCESSED:-preprocessed}
       MINIO_BUCKET_REPORTS: ${MINIO_BUCKET_REPORTS}
@@ -124,6 +127,22 @@ services:
       retries: 5
       start_period: 10s
 
+  labelstudio:
+    image: heartexlabs/label-studio:latest
+    container_name: packtrack-labelstudio
+    profiles: ["local"]
+    environment:
+      LABEL_STUDIO_USERNAME: ${LABEL_STUDIO_USERNAME:-admin@packtrack.local}
+      LABEL_STUDIO_PASSWORD: ${LABEL_STUDIO_PASSWORD:-packtrack-local}
+      LABEL_STUDIO_USER_TOKEN: ${LABEL_STUDIO_USER_TOKEN:-packtrack-local-token}
+      LABEL_STUDIO_DISABLE_SIGNUP_WITHOUT_LINK: "true"
+      LABEL_STUDIO_BASE_DATA_DIR: /label-studio/data
+    ports:
+      - "8080:8080"
+    volumes:
+      - labelstudio_data:/label-studio/data
+
 volumes:
   pgdata:
   miniodata:
+  labelstudio_data:

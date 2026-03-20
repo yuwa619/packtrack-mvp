@@ -1,0 +1,25 @@
+[build]
+  base = "frontend"
+  command = "npm ci && npm run build"
+  publish = "dist"
+
+[build.environment]
+  NODE_VERSION = "20"
+
+# SPA fallback — all unmatched routes serve index.html so client-side
+# routing works (React Router, hash routing, deep-link bookmarks).
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+[context.production.environment]
+  # Set VITE_API_BASE_URL in the Netlify dashboard → Site settings →
+  # Environment variables. Example:
+  #   VITE_API_BASE_URL = https://packtrack-api.onrender.com/api/v1
+  # The value below is only a placeholder reminder — Netlify dashboard
+  # values take precedence over netlify.toml values.
+  VITE_API_BASE_URL = "https://YOUR_RENDER_API_URL/api/v1"
+
+[context.deploy-preview.environment]
+  VITE_API_BASE_URL = "https://YOUR_RENDER_API_URL/api/v1"
