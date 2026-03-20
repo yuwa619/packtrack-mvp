@@ -13,13 +13,6 @@
   to = "/index.html"
   status = 200
 
-[context.production.environment]
-  # Set VITE_API_BASE_URL in the Netlify dashboard → Site settings →
-  # Environment variables. Example:
-  #   VITE_API_BASE_URL = https://packtrack-api.onrender.com/api/v1
-  # The value below is only a placeholder reminder — Netlify dashboard
-  # values take precedence over netlify.toml values.
-  VITE_API_BASE_URL = "https://YOUR_RENDER_API_URL/api/v1"
-
-[context.deploy-preview.environment]
-  VITE_API_BASE_URL = "https://YOUR_RENDER_API_URL/api/v1"
+# VITE_API_BASE_URL is set in the Netlify dashboard → Site settings →
+# Environment variables. Do NOT set it here — netlify.toml values
+# override dashboard values for context-specific environment blocks.
