@@ -88,7 +88,7 @@ services:
 
 databases:
   - name: packtrack-db
-    plan: starter
+    plan: basic
     databaseName: packtrack
     user: packtrack
     postgresMajorVersion: "15"
