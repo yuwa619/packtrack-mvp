@@ -12,6 +12,16 @@ class Settings(BaseSettings):
     api_port: int = 8000
 
     database_url: str = "postgresql+psycopg://packtrack:packtrack@postgres:5432/packtrack"
+
+    @property
+    def resolved_database_url(self) -> str:
+        """Normalize Render/Heroku-style URLs to use the psycopg (v3) driver."""
+        url = self.database_url
+        if url.startswith("postgresql://"):
+            return url.replace("postgresql://", "postgresql+psycopg://", 1)
+        if url.startswith("postgres://"):
+            return url.replace("postgres://", "postgresql+psycopg://", 1)
+        return url
     redis_url: str = "redis://redis:6379/0"
     minio_internal_endpoint: str | None = None
     minio_public_endpoint: str = "http://localhost:9000"
