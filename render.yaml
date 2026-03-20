@@ -23,11 +23,9 @@ services:
         fromDatabase:
           name: packtrack-db
           property: connectionString
+      # REDIS_URL — set manually in dashboard after creating Redis instance.
       - key: REDIS_URL
-        fromService:
-          name: packtrack-redis
-          type: redis
-          property: connectionString
+        sync: false
       # CORS — set to your Netlify production URL after first deploy.
       # Comma-separated for multiple origins.
       - key: CORS_ORIGINS
@@ -80,11 +78,9 @@ services:
     envVars:
       - key: ENVIRONMENT
         value: production
+      # REDIS_URL — set manually in dashboard after creating Redis instance.
       - key: REDIS_URL
-        fromService:
-          name: packtrack-redis
-          type: redis
-          property: connectionString
+        sync: false
 
 databases:
   - name: packtrack-db
@@ -93,13 +89,6 @@ databases:
     user: packtrack
     postgresMajorVersion: "15"
 
-# Render-managed Redis
-# https://render.com/docs/redis
-# Note: Render Redis is created separately via dashboard if not
-# supported in blueprint. If your Render plan supports it:
-  # - name: packtrack-redis
-  #   type: redis
-  #   plan: starter
-  #   maxmemoryPolicy: allkeys-lru
-# Otherwise, create Redis manually in the Render dashboard and
-# set REDIS_URL as a manual environment variable on both services.
+# Redis: create manually in the Render dashboard (Dashboard → New → Redis),
+# then copy the connection string into REDIS_URL on both packtrack-api and
+# packtrack-worker via their Environment settings.
